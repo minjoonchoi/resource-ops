@@ -5,6 +5,7 @@ metadata:
   title: 회원 기본 정보 보기
   organization: member-team
 spec:
-  service: member-api
-  method: GET
-  path: /v1/members/{memberId}
+  endpoint:
+    service: member-api
+    method: GET
+    path: /v1/members/{memberId}

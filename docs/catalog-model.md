@@ -79,23 +79,70 @@ snapshot에서 adapter로 합성하며 세부 규칙은 [버전 호환성 문서
 apiVersion: resource-ops/v1
 kind: Action
 metadata:
-  name: members.detail.read
-  title: 회원 기본 정보 보기
+  name: members.contact.read
+  title: 회원 연락처 보기
   organization: member-team
 spec:
-  service: member-api
-  method: GET
-  path: /v1/members/{memberId}
+  endpoint:
+    service: member-api
+    method: GET
+    path: /v1/members/{memberId}
+  plugins:
+    before:
+      - name: confirm
+    after:
+      - name: history
 ```
 
 Action의 `metadata.organization`은 선택적인 담당조직 표시입니다. 자동 생성 Service/Endpoint는
 원본 경로에서 조직이 반드시 결정됩니다. 조직 표시 자체로 권한이 부여되지는 않습니다.
 Action에는 Endpoint ID, request, responses, field 제한을 작성하지 않습니다.
-`service`는 **생성 Service의 metadata.name**을 참조하고 method/path는 직접 명세합니다.
+`spec.endpoint.service`는 **생성 Service의 metadata.name**을 참조하고 endpoint.method/path는 직접 명세합니다.
 서비스가 존재해야 하고 그 서비스의 operation과 method/path 및 경로 변수명이 정확히 일치해야 합니다.
 다른 서비스의 동일 URL·path로 대신 매칭하거나 대소문자·trailing slash를 보정하지 않습니다.
 동일 서비스에서 `/members/{id}`와 `/members/{memberId}`처럼 모호한 route도 거부합니다.
 Page에서 아직 사용하지 않는 Action도 검증합니다. 여러 Action이 같은 API를 사용할 수 있습니다.
+
+## Action 실행 플러그인
+
+Action의 `spec`은 `endpoint`와 선택적인 `plugins`로 구성합니다. `endpoint`는 필수이며
+Service.metadata.name 참조와 method/path만 담습니다. 기존 spec 최상위의 service/method/path는
+허용하지 않으므로 소비자도 `spec.endpoint`로 전환해야 합니다.
+
+| 필드 | 역할 |
+| --- | --- |
+| `spec.endpoint` | 실행할 엔드포인트 한 개: service, method, path |
+| `spec.plugins.before` | 엔드포인트 실행 전 플러그인 배열. 현재 `name: confirm` 지원 |
+| `spec.plugins.after` | 엔드포인트 실행 후 플러그인 배열. 현재 `name: history` 지원 |
+| 각 플러그인의 `config` | 선택적인 플러그인별 설정 객체. 값은 snapshot에 그대로 보존 |
+
+플러그인을 사용하지 않으면 `plugins`를 생략합니다. before/after 중 필요한 단계만 작성할 수도
+있습니다. 빈 plugins/단계 배열은 거부합니다. 현재 각 플러그인은 정해진 단계에 한 번만 연결하며,
+알 수 없는 이름, 잘못된 단계, 중복 연결을 검증에서 거부합니다. 새 플러그인을 지원하려면
+카탈로그 schema와 실행 서버의 플러그인 등록/검증을 함께 확장해야 합니다.
+플러그인의 name은 실행 서버에 등록된 구현 식별자이며 카탈로그 리소스 참조가 아닙니다.
+Service/Action/Page 간 참조는 계속 대상 metadata.name을 사용합니다.
+
+실행 서버가 따라야 할 단계 계약은 다음과 같습니다.
+
+1. Action 권한과 입력을 검증하고 Page 사용 맥락의 override를 적용합니다.
+2. before의 confirm이 연결되었으면 확인을 완료한 뒤 endpoint를 호출합니다.
+   대기·거절·취소·오류 상태에서는 endpoint를 호출하지 않습니다. 확인 UI나 결재 방식은 플러그인 구현에서 결정합니다.
+3. endpoint 호출을 시도하고 결과를 확정합니다. after의 history가 연결되었으면 성공뿐 아니라
+   API 오류·timeout 등 실패 결과도 기록합니다. confirm 단계에서 끝난 경우에는 after를 실행하지 않습니다.
+4. history 저장 실패를 이유로 이미 실행한 endpoint를 다시 호출하지 않습니다.
+   실행 식별자로 이력 저장을 재시도/중복 방지하고 저장 실패를 별도 상태로 추적합니다.
+
+위 내용은 실행 소비자 계약이며 이 저장소의 스크립트는 확인 UI, API 호출, DB 이력 저장을 실행하지 않습니다.
+config는 현재 객체 타입과 원문 보존까지만 검증합니다. 플러그인별 필수 설정 및 지원 여부는 실행 서버가
+업무 호출 전에 검사해야 하며, 지원하지 않는 플러그인을 무시하고 endpoint를 호출하면 안 됩니다.
+이력의 저장소·보존 기간·저장 필드 및 확인 절차의 세부 설정은 플러그인 구현 계약에서 정의합니다.
+요청/응답 전문의 자동 저장이나 필드 변경은 이 선언에 포함되지 않습니다.
+
+플러그인 구성은 Action에 속하므로 모든 Page 사용에 동일하게 적용됩니다. Page overrides로 플러그인을
+제거·변경할 수 없습니다. Page 밖에서 Action을 실행하는 경우에도 Action.spec.plugins를 적용합니다.
+`resources`의 Action 원본과 `pageActionUsages.plugins`에 구성을 보존하고 생략한 단계는 사용 계약에서
+빈 배열로 정규화합니다. `pageActionUsages.effective`는 기존처럼 엔드포인트의 요청/응답 계약입니다.
 
 ## Page의 sparse override
 

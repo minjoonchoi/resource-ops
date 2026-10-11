@@ -6,6 +6,12 @@ metadata:
   description: 기본 정보 조회와 같은 Endpoint를 사용하지만 별도 Action 권한으로 제어합니다.
   organization: member-team
 spec:
-  service: member-api
-  method: GET
-  path: /v1/members/{memberId}
+  endpoint:
+    service: member-api
+    method: GET
+    path: /v1/members/{memberId}
+  plugins:
+    before:
+      - name: confirm
+    after:
+      - name: history

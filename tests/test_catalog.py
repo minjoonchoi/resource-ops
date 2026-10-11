@@ -9,32 +9,32 @@ class CatalogTests(Fixture):
 
     def test_action_rejects_endpoint_id_reference(self):
         self.change("actions/members.detail.read.yaml", lambda d: d["spec"].update(endpoint="members.get"))
-        self.invalid("Additional properties.*endpoint")
+        self.invalid("not of type 'object'")
 
     def test_action_rejects_inline_service_details(self):
-        self.change("actions/members.detail.read.yaml", lambda d: d["spec"].update(
+        self.change("actions/members.detail.read.yaml", lambda d: d["spec"]["endpoint"].update(
             service={"name": "member-api", "baseUrl": "https://members.example.invalid"}))
         self.invalid("not of type 'string'")
 
     def test_action_service_must_be_registered(self):
-        self.change("actions/members.detail.read.yaml", lambda d: d["spec"].update(service="missing"))
-        self.invalid("actions/members.detail.read.yaml.*spec.service: unregistered service")
+        self.change("actions/members.detail.read.yaml", lambda d: d["spec"]["endpoint"].update(service="missing"))
+        self.invalid("actions/members.detail.read.yaml.*spec.endpoint.service: unregistered service")
 
     def test_action_method_must_match_registered_endpoint(self):
-        self.change("actions/members.detail.read.yaml", lambda d: d["spec"].update(method="POST"))
+        self.change("actions/members.detail.read.yaml", lambda d: d["spec"]["endpoint"].update(method="POST"))
         self.invalid("no registered Endpoint.*POST /v1/members")
 
     def test_action_path_must_match_registered_endpoint(self):
-        self.change("actions/members.detail.read.yaml", lambda d: d["spec"].update(path="/v2/members/{memberId}"))
+        self.change("actions/members.detail.read.yaml", lambda d: d["spec"]["endpoint"].update(path="/v2/members/{memberId}"))
         self.invalid("no registered Endpoint.*GET /v2/members")
 
     def test_action_path_parameter_names_must_match_exactly(self):
-        self.change("actions/members.detail.read.yaml", lambda d: d["spec"].update(path="/v1/members/{id}"))
-        self.invalid("spec.path must exactly match.*memberId.*including path parameter names")
+        self.change("actions/members.detail.read.yaml", lambda d: d["spec"]["endpoint"].update(path="/v1/members/{id}"))
+        self.invalid("spec.endpoint.path must exactly match.*memberId.*including path parameter names")
 
     def test_unpaged_action_still_requires_valid_direct_specification(self):
         self.change("pages/member-detail.yaml", lambda d: d["spec"].update(actions=[u for u in d["spec"]["actions"] if u["action"] != "members.contact.read"]))
-        self.change("actions/members.contact.read.yaml", lambda d: d["spec"].update(method="DELETE"))
+        self.change("actions/members.contact.read.yaml", lambda d: d["spec"]["endpoint"].update(method="DELETE"))
         self.invalid("members.contact.read.yaml.*no registered Endpoint.*DELETE")
 
     def test_unknown_fields_do_not_silently_change_meaning(self):
@@ -202,11 +202,11 @@ class CatalogTests(Fixture):
         api['paths'] = {LIST: api['paths'][LIST]}
         self.write('openapi/other-team/other-api.json', api)
         generate(self.root)
-        self.change('actions/members.contact.read.yaml', lambda d: d['spec'].update(service='other-api'))
+        self.change('actions/members.contact.read.yaml', lambda d: d['spec']['endpoint'].update(service='other-api'))
         self.invalid("no registered Endpoint for service 'other-api'")
 
     def test_name_reference_does_not_use_display_title(self):
-        self.change('actions/members.detail.read.yaml', lambda d: d['spec'].update(service='display-title'))
+        self.change('actions/members.detail.read.yaml', lambda d: d['spec']['endpoint'].update(service='display-title'))
         self.invalid('unregistered service')
 
     def test_response_default_and_no_content_are_inherited(self):

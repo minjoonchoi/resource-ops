@@ -33,27 +33,35 @@ Endpoint의 `metadata.name`은 `member-api.GET./v1/members/{memberId}`처럼
 ## 개발조직의 Action 작성
 
 먼저 생성된 서비스 YAML의 `metadata.name`과 엔드포인트 method/path를 확인합니다.
-`actions/members.detail.read.yaml`처럼 업무를 직접 추가합니다. 생성기는 Action을 만들거나 수정하지 않습니다.
+`actions/members.contact.read.yaml`처럼 업무를 직접 추가합니다. 생성기는 Action을 만들거나 수정하지 않습니다.
 
 ```yaml
 apiVersion: resource-ops/v1
 kind: Action
 metadata:
-  name: members.detail.read
-  title: 회원 기본 정보 보기
+  name: members.contact.read
+  title: 회원 연락처 보기
   organization: member-team
 spec:
-  service: member-api
-  method: GET
-  path: /v1/members/{memberId}
+  endpoint:
+    service: member-api
+    method: GET
+    path: /v1/members/{memberId}
+  plugins:
+    before:
+      - name: confirm
+    after:
+      - name: history
 ```
 
-`service`는 **Service.metadata.name** 참조입니다. JSON의 `info.title`, `operationId`, 조직명,
+`spec.endpoint.service`는 **Service.metadata.name** 참조입니다. JSON의 `info.title`, `operationId`, 조직명,
 파일 경로나 URL을 서비스 참조 키로 사용하지 않습니다. Endpoint ID를 Action에 작성하지 않으며,
 서비스·method·path로 대조한 Endpoint의 `metadata.name`을 DB 연결 키로 사용합니다.
 Page의 Action 참조 및 상위 Page 참조도 대상의 `metadata.name`을 사용합니다.
 
-Action은 업무/권한 단위만 정의합니다. 요청·응답 변경은 `Page.spec.actions[].overrides`에
+Action은 업무/권한 단위와 실행 전후 플러그인 연결을 정의합니다.
+`spec.endpoint`에 호출 대상을, `spec.plugins.before/after`에 confirm/history를 연결합니다.
+플러그인은 선택 사항이며 [실행 계약과 검증 범위](docs/catalog-model.md#action-실행-플러그인)를 따릅니다. 요청·응답 변경은 `Page.spec.actions[].overrides`에
 원본에서 달라지는 부분만 작성합니다. 같은 Action도 Page별 사용 계약은 독립적입니다.
 관계가 존재한다고 실행 권한이 자동 부여되는 것은 아니며, 실행 서버의 권한 확인이 필요합니다.
 

@@ -29,7 +29,7 @@ class VersionTests(Fixture):
         self.write('actions/compat.read.yaml', {
             'apiVersion': 'resource-ops/v1', 'kind': 'Action',
             'metadata': {'name': 'compat.read', 'title': 'Read record'},
-            'spec': {'service': 'compat-api', 'method': method, 'path': path}})
+            'spec': {'endpoint': {'service': 'compat-api', 'method': method, 'path': path}}})
         usage = {'action': 'compat.read'}
         if overrides:
             usage['overrides'] = overrides

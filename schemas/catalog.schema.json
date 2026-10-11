@@ -203,19 +203,14 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "service",
-        "method",
-        "path"
+        "endpoint"
       ],
       "properties": {
-        "service": {
-          "$ref": "#/$defs/name"
+        "endpoint": {
+          "$ref": "#/$defs/actionEndpoint"
         },
-        "method": {
-          "$ref": "#/$defs/httpMethod"
-        },
-        "path": {
-          "$ref": "#/$defs/endpointPath"
+        "plugins": {
+          "$ref": "#/$defs/actionPlugins"
         }
       }
     },
@@ -362,6 +357,73 @@
         },
         "openapi": {
           "type": "object"
+        }
+      }
+    },
+    "actionEndpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "service",
+        "method",
+        "path"
+      ],
+      "properties": {
+        "service": {
+          "$ref": "#/$defs/name"
+        },
+        "method": {
+          "$ref": "#/$defs/httpMethod"
+        },
+        "path": {
+          "$ref": "#/$defs/endpointPath"
+        }
+      }
+    },
+    "actionPlugins": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "before": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "const": "confirm"
+              },
+              "config": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "after": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "const": "history"
+              },
+              "config": {
+                "type": "object"
+              }
+            }
+          }
         }
       }
     }

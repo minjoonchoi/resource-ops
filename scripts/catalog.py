@@ -20,12 +20,12 @@ DIRECTORIES = {"Service": "services", "Action": "actions", "Page": "pages"}
 
 def resolve_action_endpoint(action, resources, routes):
     """Match a direct Action specification against the registered service and route."""
-    name, spec = action["metadata"]["name"], action["spec"]
+    name, spec = action["metadata"]["name"], action["spec"]["endpoint"]
     location = f"actions/{name}.yaml (Action/{name})"
     service = spec["service"]
     registered = resources.get(("Service", service))
     require(registered is not None,
-            f"{location}: spec.service: unregistered service {service!r}")
+            f"{location}: spec.endpoint.service: unregistered service {service!r}")
     route = service, spec["method"], spec["path"]
     endpoint = routes.get(route)
     if endpoint is None:
@@ -33,7 +33,7 @@ def resolve_action_endpoint(action, resources, routes):
         similar = next((key[2] for key in routes if key[:2] == route[:2]
                         and TEMPLATE.sub("{}", key[2]) == shape), None)
         if similar is not None:
-            raise CatalogError(f"{location}: spec.path must exactly match {similar!r}, "
+            raise CatalogError(f"{location}: spec.endpoint.path must exactly match {similar!r}, "
                                f"including path parameter names; got {spec['path']!r}")
         raise CatalogError(f"{location}: no registered Endpoint for service {service!r}: "
                            f"{spec['method']} {spec['path']}")
@@ -90,7 +90,10 @@ def resolve_page_action(page_name, usage, action, endpoint, service):
     if "requestBody" in contract:
         effective["request"]["body"] = copy.deepcopy(dereference(contract["requestBody"], document))
         effective["request"]["body"]["source"] = "input"
-    return {"page": page_name, "action": usage["action"], "endpoint": endpoint["metadata"]["name"], "effective": effective}
+    plugins = action["spec"].get("plugins", {})
+    return {"page": page_name, "action": usage["action"], "endpoint": endpoint["metadata"]["name"],
+            "plugins": {phase: copy.deepcopy(plugins.get(phase, [])) for phase in ("before", "after")},
+            "effective": effective}
 
 
 def build_snapshot(root: Path, verify_sources=True):
@@ -180,7 +183,7 @@ def build_snapshot(root: Path, verify_sources=True):
                 action = resources["Action", usage["action"]]
                 endpoint = action_endpoints[usage["action"]]
                 page_action_usages.append(resolve_page_action(
-                    name, usage, action, endpoint, resources["Service", action["spec"]["service"]]))
+                    name, usage, action, endpoint, resources["Service", action["spec"]["endpoint"]["service"]]))
             visited, current = set(), name
             while current is not None:
                 require(current not in visited, f"Page/{name}: parent cycle through {current}")
