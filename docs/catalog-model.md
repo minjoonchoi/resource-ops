@@ -98,6 +98,8 @@ spec:
           execution: requester
     after:
       - name: history
+        config:
+          events: [confirm, endpoint]
 ```
 
 Action의 `metadata.organization`은 선택적인 담당조직 표시입니다. 자동 생성 Service/Endpoint는
@@ -119,9 +121,9 @@ Service.metadata.name 참조와 method/path만 담습니다. 기존 spec 최상�
 | --- | --- |
 | `spec.endpoint` | 실행할 엔드포인트 한 개: service, method, path |
 | `spec.plugins.before` | 엔드포인트 실행 전 플러그인 배열. 현재 `name: confirm` 지원 |
-| `spec.plugins.after` | 엔드포인트 실행 후 플러그인 배열. 현재 `name: history` 지원 |
+| `spec.plugins.after` | 후처리 플러그인 배열. history는 Action 전체 이벤트를 지속 수집/저장 |
 | confirm의 `config` | 필수 확인 대상·필요 인원·실행 방식 |
-| history의 `config` | 선택적인 이력 플러그인 설정 객체 |
+| history의 `config` | 필수 events 목록: confirm, endpoint 중 기록할 이벤트 범위 |
 
 플러그인을 사용하지 않으면 `plugins`를 생략합니다. before/after 중 필요한 단계만 작성할 수도
 있습니다. 빈 plugins/단계 배열은 거부합니다. 현재 각 플러그인은 정해진 단계에 한 번만 연결하며,
@@ -171,26 +173,73 @@ metadata.name에 대응하는 식별자입니다. 이 저장소에는 사용자/
 
 실행 서버가 따라야 할 단계 계약은 다음과 같습니다.
 
-1. Action 권한과 입력을 검증하고 Page 사용 맥락의 override를 적용합니다.
+1. after.history가 연결되었으면 Action 시작 시 이력 수집을 준비합니다.
+   Action 권한과 입력을 검증하고 Page 사용 맥락의 override를 적용합니다.
 2. before의 confirm이 연결되었으면 count명의 유효 확인이 모일 때까지 대기합니다.
    requester 방식은 충족 후 요청자의 실행 명령을 기다리고 automatic 방식은 충족 시 자동 실행합니다.
    조건 미충족·요청 취소·오류 상태에서는 endpoint를 호출하지 않습니다. 확인 UI는 플러그인 구현에서 결정합니다.
-3. endpoint 호출을 시도하고 결과를 확정합니다. after의 history가 연결되었으면 성공뿐 아니라
-   API 오류·timeout 등 실패 결과도 기록합니다. confirm 단계에서 끝난 경우에는 after를 실행하지 않습니다.
+3. endpoint 호출을 시도하고 결과를 확정합니다. history는 선택된 범위의 이벤트를 발생 시점마다 기록합니다.
+   확인 과정과 API 오류·timeout 등 실패 결과도 포함하며, endpoint를 호출하지 않은 종료도 기록합니다.
 4. history 저장 실패를 이유로 이미 실행한 endpoint를 다시 호출하지 않습니다.
    실행 식별자로 이력 저장을 재시도/중복 방지하고 저장 실패를 별도 상태로 추적합니다.
 
 위 내용은 실행 소비자 계약이며 이 저장소의 스크립트는 확인 UI, API 호출, DB 이력 저장을 실행하지 않습니다.
-confirm.config의 구조와 정적 조건은 카탈로그에서 검증합니다. history.config는 객체 타입과 원문 보존을 검증합니다.
+confirm.config의 구조/정적 조건과 history.config.events의 허용 값/중복/누락을 카탈로그에서 검증합니다.
 외부 대상의 존재/소속과 플러그인별 실행 지원 여부는 실행 서버가
 업무 호출 전에 검사해야 하며, 지원하지 않는 플러그인을 무시하고 endpoint를 호출하면 안 됩니다.
-이력의 저장소·보존 기간·저장 필드와 확인 UI는 플러그인 구현 계약에서 정의합니다.
+이력의 저장소·보존 기간과 확인 UI는 플러그인 구현 계약에서 정의합니다. 이력의 공통 필드는 아래 계약을 따릅니다.
 요청/응답 전문의 자동 저장이나 필드 변경은 이 선언에 포함되지 않습니다.
 
 플러그인 구성은 Action에 속하므로 모든 Page 사용에 동일하게 적용됩니다. Page overrides로 플러그인을
 제거·변경할 수 없습니다. Page 밖에서 Action을 실행하는 경우에도 Action.spec.plugins를 적용합니다.
 `resources`의 Action 원본과 `pageActionUsages.plugins`에 구성을 보존하고 생략한 단계는 사용 계약에서
 빈 배열로 정규화합니다. `pageActionUsages.effective`는 기존처럼 엔드포인트의 요청/응답 계약입니다.
+
+### History 수집 및 저장 계약
+
+`after`에 `name: history`를 연결하고 `config.events: [confirm, endpoint]`를 지정하면 두 과정의
+**모든 이벤트**를 기록합니다. confirm 또는 endpoint만 선택할 수도 있습니다. 목록은 필수이며
+빈 목록·중복·알 수 없는 범위는 거부합니다. confirm 플러그인이 없는 Action에서도 두 범위를 지정할 수
+있으며, 실제로 발생하지 않은 confirm 이벤트는 만들지 않습니다.
+
+history의 after 배치는 후처리 책임을 나타냅니다. endpoint 완료 시 한 번 호출하는 콜백으로 구현하면
+대기 중인 확인이나 endpoint 미실행 이력을 잃으므로, 실행 서버는 Action 진입부터 수집기를 활성화하고
+각 이벤트를 내구성 있게 저장해야 합니다. confirm이 며칠 동안 대기해도 기록을 완료 시점까지 미루지 않습니다.
+
+| 범위 | 기록할 행위/전이 |
+| --- | --- |
+| confirm | 확인 요청 생성, 후보별 확인·거절·철회, count 충족/미충족 전이, 요청 취소·만료·오류 |
+| endpoint | 요청자의 실행 명령 또는 자동 실행 예약, 호출 시작, 성공·API 오류·timeout·네트워크 오류, 호출 생략/차단 |
+
+철회·만료 등 기능을 실행 서버가 지원해 실제로 발생한 경우 기록합니다. count 미달이나 취소로 끝나면
+confirm 이력과 endpoint.skipped(사유 포함)를 남기며 호출 시작/성공 이력을 만들지 않습니다.
+자동 실행에서는 마지막 확인자와 자동 실행 주체를 서로 다른 이벤트 행위자로 기록합니다.
+
+이벤트마다 다음 공통 정보를 저장합니다. 필드 선택 옵션으로 행위자나 Action 식별자를 끄지 않습니다.
+
+| 필드 | 저장 값 |
+| --- | --- |
+| `actionName` | 해당 Action.metadata.name. YAML 설정에 별도 키로 중복 작성하지 않음 |
+| `executionId` | 하나의 업무 실행 요청 ID. 동일 Action의 반복 실행/동시 요청을 구분 |
+| `eventId`, `sequence`, `occurredAt` | 중복 저장 방지 키, 실행 요청 내 순서, 발생 시각 |
+| `event` | confirm.approved, endpoint.started 등 실제 발생한 행위/전이 |
+| `actor` | 실제 행위자의 종류(user/system), 안정적인 ID, 당시 사용자 닉네임(사용자일 때) |
+| `requester` | 원래 요청자의 안정적인 ID와 요청 당시 닉네임 |
+| `result`, `reason` | 행위 결과와 거절·오류·호출 생략 사유(해당할 때) |
+| `catalogRevision`, `page` | 요청에 고정한 카탈로그 revision과 Page 맥락(있을 때) |
+| `details` | confirm의 현재 확인 수/count 또는 endpoint의 service/method/path·실행 방식·HTTP 상태 등 |
+
+Action.metadata.name은 조회/분류 기준이고 executionId는 개별 실행의 연결 기준입니다.
+닉네임 변경 후에도 누가 수행했는지 추적할 수 있도록 사용자 ID와 당시 닉네임을 함께 저장합니다.
+시스템이 만든 자동 실행·상태 전이는 시스템 행위자와 원래 요청자를 모두 남깁니다.
+이벤트를 처리할 때의 새 Action 이름으로 과거 이력을 덮어쓰지 않고 요청에 고정한 이름/revision을 유지합니다.
+
+snapshot의 Action.metadata.name 또는 pageActionUsages.action이 history의 actionName 바인딩입니다.
+플러그인 설정에서 다른 actionName/groupBy를 지정하는 것은 거부합니다. Page 밖 실행도 Action 원본의
+metadata.name과 plugins를 사용합니다. 실제 이력 이벤트는 카탈로그 snapshot에 포함하지 않습니다.
+
+중복 이벤트 재처리는 eventId로 멱등 저장하고, 이력 저장 실패는 내구성 큐/outbox 등으로 복구해야 합니다.
+이력 복구 때문에 endpoint를 다시 실행하지 않습니다. 저장소/실행 서버는 이 저장소에서 구현하지 않습니다.
 
 ## Page의 sparse override
 

@@ -414,14 +414,15 @@
             "type": "object",
             "additionalProperties": false,
             "required": [
-              "name"
+              "name",
+              "config"
             ],
             "properties": {
               "name": {
                 "const": "history"
               },
               "config": {
-                "type": "object"
+                "$ref": "#/$defs/historyConfig"
               }
             }
           }
@@ -473,6 +474,26 @@
             "requester",
             "automatic"
           ]
+        }
+      }
+    },
+    "historyConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "events"
+      ],
+      "properties": {
+        "events": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "confirm",
+              "endpoint"
+            ]
+          }
         }
       }
     }

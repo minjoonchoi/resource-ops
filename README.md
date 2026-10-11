@@ -58,6 +58,8 @@ spec:
           execution: requester
     after:
       - name: history
+        config:
+          events: [confirm, endpoint]
 ```
 
 `spec.endpoint.service`는 **Service.metadata.name** 참조입니다. JSON의 `info.title`, `operationId`, 조직명,
@@ -70,6 +72,9 @@ Action은 업무/권한 단위와 실행 전후 플러그인 연결을 정의합
 confirm은 `pool.users`에 명시한 닉네임과 `pool.organizations`의 소속 사용자를 합친 후보 중
 서로 다른 `count`명의 확인을 요구합니다. `execution: requester`는 조건 충족 후
 요청자가 실행하고, `automatic`은 조건 충족 시 자동 실행합니다.
+`history.config.events: [confirm, endpoint]`는 확인 과정과 호출 과정의 모든 이벤트를 기록하도록 선언합니다.
+Action.metadata.name과 실행 요청 ID를 기준으로 각 이벤트의 행위자·행위·시각·결과를 남기며,
+확인 대기/거절/취소로 endpoint를 호출하지 않은 경우도 기록합니다. after에 연결해도 수집은 Action 시작부터 수행합니다.
 플러그인은 선택 사항이며 [실행 계약과 검증 범위](docs/catalog-model.md#action-실행-플러그인)를 따릅니다. 요청·응답 변경은 `Page.spec.actions[].overrides`에
 원본에서 달라지는 부분만 작성합니다. 같은 Action도 Page별 사용 계약은 독립적입니다.
 관계가 존재한다고 실행 권한이 자동 부여되는 것은 아니며, 실행 서버의 권한 확인이 필요합니다.

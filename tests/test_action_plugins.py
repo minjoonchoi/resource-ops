@@ -12,6 +12,10 @@ def confirm_plugin():
         'count': 1, 'execution': 'requester'}}
 
 
+def history_plugin():
+    return {'name': 'history', 'config': {'events': ['confirm', 'endpoint']}}
+
+
 class ActionPluginTests(Fixture):
     def set_plugins(self, plugins):
         self.change(ACTION, lambda d: d['spec'].update(plugins=plugins))
@@ -20,7 +24,7 @@ class ActionPluginTests(Fixture):
         return [u for u in snapshot['pageActionUsages'] if u['action'] == 'members.detail.read']
 
     def test_plugins_are_optional_and_missing_phases_normalize_to_empty_arrays(self):
-        for plugins in (None, {'before': [confirm_plugin()]}, {'after': [{'name': 'history'}]}):
+        for plugins in (None, {'before': [confirm_plugin()]}, {'after': [history_plugin()]}):
             with self.subTest(plugins=plugins):
                 if plugins is not None:
                     self.set_plugins(plugins)
@@ -32,8 +36,7 @@ class ActionPluginTests(Fixture):
     def test_plugin_configuration_survives_snapshot_without_affecting_endpoint_contract(self):
         before = build_snapshot(self.root)
         plugins = {'before': [confirm_plugin()],
-                   'after': [{'name': 'history', 'config': {'event': 'member.read',
-                                                         'labels': ['member', 'detail']}}]}
+                   'after': [history_plugin()]}
         self.set_plugins(plugins)
         snapshot = build_snapshot(self.root)
         action = next(r for r in snapshot['resources'] if r['kind'] == 'Action'
@@ -46,7 +49,7 @@ class ActionPluginTests(Fixture):
             self.assertEqual(usage['plugins'], plugins)
             self.assertEqual(usage['effective'], previous['effective'])
         self.assertEqual(snapshot, build_snapshot(self.root, verify_sources=False))
-        usages[0]['plugins']['after'][0]['config']['labels'].append('changed')
+        usages[0]['plugins']['after'][0]['config']['events'].pop()
         self.assertEqual(usages[1]['plugins'], plugins)
         self.assertEqual(action['spec']['plugins'], plugins)
 
@@ -150,3 +153,49 @@ class ActionPluginTests(Fixture):
         plugin['config']['count'] = 2
         self.set_plugins({'before': [plugin]})
         self.invalid('count exceeds pool user nicknames')
+
+    def test_history_event_selection_is_preserved_without_confirm_plugin(self):
+        for events in (['confirm'], ['endpoint'], ['confirm', 'endpoint']):
+            with self.subTest(events=events):
+                plugin = {'name': 'history', 'config': {'events': events}}
+                self.set_plugins({'after': [plugin]})
+                snapshot = build_snapshot(self.root)
+                for usage in self.usages(snapshot):
+                    self.assertEqual(usage['plugins'], {'before': [], 'after': [plugin]})
+                self.assertEqual(snapshot, build_snapshot(self.root, verify_sources=False))
+
+    def test_history_rejects_invalid_events_and_overridden_action_identity(self):
+        invalid = [None, {}, {'events': []}, {'events': 'confirm'},
+                   {'events': ['confirm', 'confirm']}, {'events': ['unknown']},
+                   {'events': ['endpoint'], 'actionName': 'another.action'},
+                   {'events': ['endpoint'], 'groupBy': 'endpoint'},
+                   {'events': ['endpoint'], 'actor': False}]
+        for config in invalid:
+            with self.subTest(config=config):
+                self.set_plugins({'after': [{'name': 'history', 'config': config}]})
+                with self.assertRaises(CatalogError):
+                    build_snapshot(self.root)
+        self.set_plugins({'after': [{'name': 'history'}]})
+        with self.assertRaises(CatalogError):
+            build_snapshot(self.root)
+
+    def test_history_action_binding_follows_metadata_name_not_endpoint(self):
+        self.set_plugins({'after': [history_plugin()]})
+        renamed = 'members.detail.audit'
+        action = self.read(ACTION)
+        action['metadata']['name'] = renamed
+        (self.root / ACTION).unlink()
+        self.write(f'actions/{renamed}.yaml', action)
+        for page in ('members', 'member-detail'):
+            self.change_usage(page, 'members.detail.read', lambda u: u.update(action=renamed))
+        generate(self.root)
+        snapshot = build_snapshot(self.root)
+        usages = [u for u in snapshot['pageActionUsages'] if u['action'] == renamed]
+        self.assertEqual(len(usages), 2)
+        for usage in usages:
+            self.assertEqual(usage['plugins']['after'], [history_plugin()])
+        contact = next(u for u in snapshot['pageActionUsages'] if u['action'] == 'members.contact.read')
+        self.assertEqual(contact['endpoint'], usages[0]['endpoint'])
+        self.assertNotEqual(contact['action'], usages[0]['action'])
+        self.assertFalse(any(r['kind'] == 'Action' and r['metadata']['name'] == 'members.detail.read'
+                             for r in snapshot['resources']))

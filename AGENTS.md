@@ -34,6 +34,9 @@
 `spec.endpoint.service/method/path`에 작성한다. 실행 전후 플러그인은 `spec.plugins.before/after`에
 연결하며 요청/응답 필드 설정은 계속 Page의 overrides에 둔다. confirm에는 config.pool(users 닉네임 / organizations 조직 식별자),
 count, execution(requester/automatic)을 반드시 작성하고 대상·확인 수를 추측하여 채우지 않는다.
+history는 config.events로 수집 범위를 지정하며 confirm/endpoint 전체 이력은 [confirm, endpoint]로 선언한다.
+이력의 Action 식별자는 해당 Action.metadata.name에서 가져오고 설정에 중복 작성하지 않는다.
+after.history는 Action 시작부터 이벤트를 수집하며 endpoint 미실행 종료도 기록하는 계약이다.
 Action/Page 정의는 별도 요청 없이 생성기에서 자동 생성하거나 수정하지 않는다.
 
 ## 명세 버전 호환성 작업
