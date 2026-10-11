@@ -58,6 +58,14 @@ spec:
           execution: requester
     after:
       - name: history
+        config:
+          request:
+            parameters:
+              - in: path
+                name: memberId
+          responses:
+            '200':
+              fields: [/id, /email]
 ```
 
 `spec.endpoint.service`는 **Service.metadata.name** 참조입니다. JSON의 `info.title`, `operationId`, 조직명,
@@ -71,7 +79,8 @@ confirm은 `pool.users`에 명시한 닉네임과 `pool.organizations`의 소속
 서로 다른 `count`명의 확인을 요구합니다. `execution: requester`는 조건 충족 후
 요청자가 실행하고, `automatic`은 조건 충족 시 자동 실행합니다.
 `after`에 `name: history`만 연결하면 해당 Action의 전체 이력을 기록하도록 선언합니다.
-별도 config/events 설정은 없으며 확인 과정과 호출 과정의 모든 이벤트가 포함됩니다.
+events 설정 없이 확인 과정과 호출 과정의 모든 이벤트가 포함됩니다. 선택적인 `config.request`와
+`config.responses`로 실제 실행 요청/응답에서 저장할 필드를 고릅니다. 생략한 값은 저장하지 않습니다.
 Action.metadata.name과 실행 요청 ID를 기준으로 각 이벤트의 행위자·행위·시각·결과를 남기며,
 확인 대기/거절/취소로 endpoint를 호출하지 않은 경우도 기록합니다. after에 연결해도 수집은 Action 시작부터 수행합니다.
 플러그인은 선택 사항이며 [실행 계약과 검증 범위](docs/catalog-model.md#action-실행-플러그인)를 따릅니다. 요청·응답 변경은 `Page.spec.actions[].overrides`에

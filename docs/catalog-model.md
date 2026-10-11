@@ -98,11 +98,20 @@ spec:
           execution: requester
     after:
       - name: history
+        config:
+          request:
+            parameters:
+              - in: path
+                name: memberId
+          responses:
+            '200':
+              fields: [/id, /email]
 ```
 
 Action의 `metadata.organization`은 선택적인 담당조직 표시입니다. 자동 생성 Service/Endpoint는
 원본 경로에서 조직이 반드시 결정됩니다. 조직 표시 자체로 권한이 부여되지는 않습니다.
-Action에는 Endpoint ID, request, responses, field 제한을 작성하지 않습니다.
+Action의 endpoint에는 Endpoint ID, request, responses, field 제한을 작성하지 않습니다.
+history.config의 필드 선택은 이력에 저장할 값만 정의하며 호출 계약의 변경은 Page에 둡니다.
 `spec.endpoint.service`는 **생성 Service의 metadata.name**을 참조하고 endpoint.method/path는 직접 명세합니다.
 서비스가 존재해야 하고 그 서비스의 operation과 method/path 및 경로 변수명이 정확히 일치해야 합니다.
 다른 서비스의 동일 URL·path로 대신 매칭하거나 대소문자·trailing slash를 보정하지 않습니다.
@@ -121,7 +130,7 @@ Service.metadata.name 참조와 method/path만 담습니다. 기존 spec 최상�
 | `spec.plugins.before` | 엔드포인트 실행 전 플러그인 배열. 현재 `name: confirm` 지원 |
 | `spec.plugins.after` | 후처리 플러그인 배열. history는 Action 전체 이벤트를 지속 수집/저장 |
 | confirm의 `config` | 필수 확인 대상·필요 인원·실행 방식 |
-| history 선언 | `name: history`만 지정. config/events 없이 Action 전체 이력 기록 |
+| history 선언 | `name: history`로 Action 전체 이력 기록. 선택적인 config로 요청/응답 저장 필드 지정 |
 
 플러그인을 사용하지 않으면 `plugins`를 생략합니다. before/after 중 필요한 단계만 작성할 수도
 있습니다. 빈 plugins/단계 배열은 거부합니다. 현재 각 플러그인은 정해진 단계에 한 번만 연결하며,
@@ -182,21 +191,77 @@ metadata.name에 대응하는 식별자입니다. 이 저장소에는 사용자/
    실행 식별자로 이력 저장을 재시도/중복 방지하고 저장 실패를 별도 상태로 추적합니다.
 
 위 내용은 실행 소비자 계약이며 이 저장소의 스크립트는 확인 UI, API 호출, DB 이력 저장을 실행하지 않습니다.
-confirm.config의 구조/정적 조건을 검증하며 history에는 name 외 config/events 등의 추가 설정을 거부합니다.
+confirm.config의 구조/정적 조건과 history.config.request/responses의 구조 및 OpenAPI 필드 존재 여부를 검증합니다.
+history의 events/actionName/groupBy 등 별도 범위/분류 설정은 거부합니다.
 외부 대상의 존재/소속과 플러그인별 실행 지원 여부는 실행 서버가
 업무 호출 전에 검사해야 하며, 지원하지 않는 플러그인을 무시하고 endpoint를 호출하면 안 됩니다.
 이력의 저장소·보존 기간과 확인 UI는 플러그인 구현 계약에서 정의합니다. 이력의 공통 필드는 아래 계약을 따릅니다.
-요청/응답 전문의 자동 저장이나 필드 변경은 이 선언에 포함되지 않습니다.
+요청/응답 값은 history.config에 명시한 필드만 저장하며 호출 계약의 필드 변경은 하지 않습니다.
 
 플러그인 구성은 Action에 속하므로 모든 Page 사용에 동일하게 적용됩니다. Page overrides로 플러그인을
 제거·변경할 수 없습니다. Page 밖에서 Action을 실행하는 경우에도 Action.spec.plugins를 적용합니다.
 `resources`의 Action 원본과 `pageActionUsages.plugins`에 구성을 보존하고 생략한 단계는 사용 계약에서
 빈 배열로 정규화합니다. `pageActionUsages.effective`는 기존처럼 엔드포인트의 요청/응답 계약입니다.
 
+### History 요청/응답 값 선택
+
+history.config를 생략하면 행위자·Action·시각·결과 등의 공통 이력만 기록하고 요청/응답 값은 저장하지
+않습니다. request/responses 중 필요한 쪽만 작성합니다. 각 선택 목록은 비어 있을 수 없으며 생략한
+파라미터·본문·응답 상태·필드는 자동 수집하지 않습니다. events 설정은 계속 사용하지 않습니다.
+
+```yaml
+after:
+  - name: history
+    config:
+      request:
+        parameters:
+          - in: path
+            name: memberId
+          - in: query
+            name: organizationCode
+        body:
+          fields: [/reason, /items/*/id]
+      responses:
+        '200':
+          fields: [/id, /result/status]
+        '400':
+          fields: [/code]
+```
+
+위 예시는 각 필드가 실제 OpenAPI에 존재하는 API에 적용하는 형식 예시입니다.
+저장소의 회원 연락처 예제는 path memberId와 200 응답의 /id, /email만 선택합니다.
+
+- request.parameters는 `(in, name)`으로 path/query/header/cookie 파라미터를 지정합니다.
+  단순 값은 이름만 지정하며 객체/배열 파라미터는 fields로 leaf를 명시합니다. 예: fields: [/*/id].
+  header 이름은 대소문자를 구분하지 않으며 그 외 이름은 정확히 일치해야 합니다.
+- request.body.fields 및 responses.<status>.fields는 JSON Pointer 형태의 leaf 경로입니다.
+  배열 요소는 `*`, 경로 안의 `/`·`~`는 `~1`·`~0`을 사용합니다. 중첩 객체 전체를 선택할 수 없습니다.
+  루트가 scalar인 schema에는 빈 문자열 경로를 사용할 수 있습니다.
+- 존재하지 않는 파라미터/필드/상태, 본문 없는 요청/응답의 본문 선택, 중복 선택을 거부합니다.
+  파라미터의 content 방식, 여러 media type, JSON 이외 본문, 복합/boolean/untyped schema는 현재 선택을
+  명확히 검증할 수 없어 거부합니다. 원본 OpenAPI 자체의 보존/가져오기 범위는 달라지지 않습니다.
+- Page에서 사용하지 않는 Action도 검증합니다. 전체 로컬 검증과 --from-generated 소비자 검증에 동일하게 적용합니다.
+
+실행 서버는 **Page 주입/고정값 적용 후 실제로 보낸 최종 요청 값**을 기록합니다. confirm 입력이나
+OpenAPI example/default를 실제 실행값으로 대신 저장하지 않습니다. 응답은 Page fields로 화면에 반환할
+필드를 줄이기 전의 endpoint 응답에서 선택합니다. 따라서 Page에 노출하지 않는 필드도 명시적으로
+history에 선택할 수 있으며, 저장된 이력의 조회 권한은 실행 서버가 따로 적용해야 합니다.
+이 설정은 로그 수집 목적이며 API의 요청/응답이나 Page projection을 수정하지 않습니다.
+
+응답 상태는 OpenAPI 계약의 정확한 상태코드 → 범위(2XX 등) → default 순서로 해당 계약을 찾고,
+그 계약 키에 작성한 history 선택을 사용합니다. 매칭된 계약에 선택이 없으면 값을 저장하지 않으며
+다른 상태의 필드를 대신 적용하지 않습니다. 실제로 없는 선택 필드는 생략하고 명시적인 null과 구분합니다.
+응답이 없거나 JSON 파싱/추출에 실패하면 결과·오류 상태를 기록하며 원문 전체 저장으로 대체하지 않습니다.
+endpoint 미실행 시 실제 요청/응답 값을 만들지 않습니다. 네트워크 전송을 시도한 뒤 실패한 경우에는
+확인 가능한 실제 요청 값과 실패 결과를 기록합니다.
+선택한 요청 값은 호출 시작 이력, 응답 값은 해당 호출 결과 이력의 details에 붙이고 executionId로 연결합니다.
+실제 값 추출/DB 저장은 실행 서버 구현 범위이며 이 저장소는 설정과 계약 검증을 제공합니다.
+
 ### History 수집 및 저장 계약
 
 `after`에 `name: history`만 연결하면 해당 Action의 **모든 이력**을 기록합니다.
-별도 config/events나 범위 선택은 없으며 Action 요청·확인·endpoint 실행·종료 과정이 모두 포함됩니다.
+별도 events나 이벤트 범위 선택은 없으며 Action 요청·확인·endpoint 실행·종료 과정이 모두 포함됩니다.
+선택적인 config는 이력 이벤트에 추가할 실제 요청/응답 값만 지정합니다.
 confirm 플러그인이 없는 Action에서도 history만 연결할 수 있습니다. 실제로 발생하지 않은 confirm
 이벤트는 만들지 않습니다. history를 생략하면 이 플러그인에 의한 이력 저장은 요청하지 않은 것입니다.
 

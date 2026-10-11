@@ -21,3 +21,11 @@ spec:
           execution: requester
     after:
       - name: history
+        config:
+          request:
+            parameters:
+              - in: path
+                name: memberId
+          responses:
+            '200':
+              fields: [/id, /email]

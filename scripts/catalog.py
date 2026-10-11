@@ -12,6 +12,7 @@ from jsonschema.exceptions import SchemaError
 
 from catalog_common import CatalogError, VERSION, read_yaml, require, validate_shape
 from generate_services import generate
+from history_selection import validate_history_selection
 from openapi_catalog import (TEMPLATE, dereference, extract_endpoints, leaf_schema, parameter_key,
                              parameters_by_key, schema_accepts, validate_service)
 
@@ -184,6 +185,7 @@ def build_snapshot(root: Path, verify_sources=True):
         if kind == "Action":
             validate_action_plugins(resource)
             endpoint = resolve_action_endpoint(resource, resources, routes)
+            validate_history_selection(resource, endpoint, resources['Service', endpoint['spec']['service']])
             action_endpoints[name] = endpoint
             link(f"Action/{name}", "invokes", "Endpoint", endpoint["metadata"]["name"])
 

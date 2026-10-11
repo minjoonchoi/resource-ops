@@ -32,9 +32,11 @@
 선택 인자 없는 실행을 전체 변환으로 간주하지 않는다. 원본 삭제 후 생성물 정리도 명시적인 전체 유지보수 작업이다.
 서비스 참조가 필요한 Action은 생성 YAML의 Service.metadata.name과 method/path를 확인하여
 `spec.endpoint.service/method/path`에 작성한다. 실행 전후 플러그인은 `spec.plugins.before/after`에
-연결하며 요청/응답 필드 설정은 계속 Page의 overrides에 둔다. confirm에는 config.pool(users 닉네임 / organizations 조직 식별자),
+연결하며 요청/응답 계약 변경은 계속 Page의 overrides에 둔다. confirm에는 config.pool(users 닉네임 / organizations 조직 식별자),
 count, execution(requester/automatic)을 반드시 작성하고 대상·확인 수를 추측하여 채우지 않는다.
-history는 name: history만 선언하며 config/events 없이 해당 Action의 전체 이력을 기록한다.
+history는 events 선택 없이 해당 Action의 전체 이력을 기록한다. 선택적인 config.request/responses는
+실제 실행 요청/응답에서 이력에 저장할 값만 선택하며, 호출 계약이나 Page 응답 필드를 변경하지 않는다.
+config를 생략하면 요청/응답 값은 저장하지 않고 공통 이력만 기록한다. 선택 경로는 OpenAPI로 검증한다.
 이력의 Action 식별자는 해당 Action.metadata.name에서 가져오고 설정에 중복 작성하지 않는다.
 after.history는 Action 시작부터 이벤트를 수집하며 endpoint 미실행 종료도 기록하는 계약이다.
 Action/Page 정의는 별도 요청 없이 생성기에서 자동 생성하거나 수정하지 않는다.
