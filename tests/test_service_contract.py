@@ -1,0 +1,186 @@
+import copy
+import shutil
+from unittest.mock import patch
+
+from catalog_test_base import *
+from openapi_catalog import make_service, schema_accepts
+from service_contract import schema_document
+from test_openapi_versions import document_for
+
+
+class ServiceContractTests(Fixture):
+    def test_documentation_and_unused_components_do_not_change_generated_bytes(self):
+        before = (self.root / SERVICE).read_bytes()
+        def edit(d):
+            d['info'].update(version='99', description='Documentation', contact={'name': 'Team'})
+            d['tags'] = [{'name': 'changed'}]
+            d['components']['schemas']['Unused'] = {'type': 'string'}
+            member = d['components']['schemas']['Member']
+            member.update(title='Document title', description='Changed', example={})
+            op = d['paths'][DETAIL]['get']
+            op.update(operationId='renamed', tags=['changed'], externalDocs={'url': 'https://example.invalid/docs'})
+            op['responses']['200']['description'] = 'Changed response description'
+        self.change(SOURCE, edit)
+        generate(self.root, 'check')
+        self.assertEqual(before, (self.root / SERVICE).read_bytes())
+
+    def test_transitive_recursive_refs_are_closed_and_preserve_literal_data(self):
+        literal = {'$ref': 'https://example.invalid/data', '$id': 'literal', 'description': 'keep me'}
+        def edit(d):
+            d['openapi'] = '3.1.2'
+            schemas = d['components']['schemas']
+            schemas['Node'] = {'type': 'object', 'properties': {
+                'next': {'$ref': '#/components/schemas/Node'},
+                'description': {'type': 'string'},
+                'default': {'$ref': '#/components/schemas/Label'}}}
+            schemas['Label'] = {'type': 'string', 'minLength': 2, 'description': 'discard'}
+            schemas['Unused'] = {'type': 'boolean'}
+            schemas['Member']['properties'].update(
+                node={'$ref': '#/components/schemas/Node'},
+                data={'type': 'object', 'default': literal, 'enum': [literal], 'const': literal},
+                **{name: {'type': 'string'} for name in ('title', 'example', 'examples', '$ref', 'default')})
+        with patch('requests.get', side_effect=AssertionError('validation must stay offline')):
+            self.change_api(edit)
+        s = self.read(SERVICE)
+        self.assertEqual(set(s['spec']['schemas']), {'Member', 'Node', 'Label'})
+        self.assertEqual(s['spec']['schemas']['Node']['properties']['next'], {'$ref': '#/schemas/Node'})
+        self.assertEqual(s['spec']['schemas']['Member']['properties']['data']['default'], literal)
+        self.assertNotIn('description', s['spec']['schemas']['Label'])
+        shutil.rmtree(self.root / 'openapi')
+        build_snapshot(self.root, verify_sources=False)
+
+    def test_nested_and_percent_encoded_named_refs_keep_exact_targets(self):
+        d = document_for('3.1.2')
+        d['components']['schemas']['Rate'] = {'type': 'object', 'properties': {'a/b%': {'type': 'string'}}}
+        d['components']['schemas']['Record']['properties']['rate'] = {
+            '$ref': '#/components/schemas/Rate/properties/a~1b%25'}
+        s = make_service(d, 'team', 'api', 'test.json')
+        ref = s['spec']['schemas']['Record']['properties']['rate']
+        self.assertEqual(ref, {'$ref': '#/schemas/Rate/properties/a~1b%25'})
+        self.assertTrue(schema_accepts(schema_document(s), ref, 'ok'))
+        self.assertFalse(schema_accepts(schema_document(s), ref, 1))
+
+    def test_server_security_and_parameter_inheritance_are_materialized(self):
+        def edit(d):
+            d['servers'] = [{'url': 'https://{zone}.example.invalid', 'description': 'drop',
+                             'variables': {'zone': {'default': 'eu', 'enum': ['eu', 'us'], 'description': 'drop'}}}]
+            d['components']['securitySchemes'] = {
+                'Token': {'type': 'http', 'scheme': 'bearer', 'description': 'drop'},
+                'Unused': {'type': 'apiKey', 'in': 'header', 'name': 'X-Key'}}
+            d['security'] = [{'Token': []}]
+            d['paths'][DETAIL]['servers'] = [{'url': 'https://detail.example.invalid'}]
+            d['paths'][LIST]['get']['security'] = []
+        self.change_api(edit)
+        s = self.read(SERVICE)['spec']
+        self.assertEqual(set(s['security-schemes']), {'Token'})
+        detail = next(e for e in s['endpoints'] if e['path'] == DETAIL)
+        listing = next(e for e in s['endpoints'] if e['path'] == LIST)
+        self.assertEqual(detail['security'], [{'Token': []}])
+        self.assertEqual(listing['security'], [])
+        self.assertEqual(detail['servers'], [{'url': 'https://detail.example.invalid'}])
+        self.assertNotIn('servers', listing)
+        self.assertNotIn('description', s['servers'][0]['variables']['zone'])
+        build_snapshot(self.root, verify_sources=False)
+
+    def test_shared_request_response_header_and_encoding_refs_are_resolved(self):
+        d = document_for('3.0.4')
+        d['components'].update(
+            headers={'Trace': {'description': 'drop', 'schema': {'type': 'string'}}},
+            requestBodies={'Upload': {'required': True, 'content': {'multipart/form-data': {
+                'schema': {'type': 'object', 'properties': {'file': {'type': 'string', 'format': 'binary'}}},
+                'encoding': {'file': {'contentType': 'image/png', 'headers': {'X-Trace': {'$ref': '#/components/headers/Trace'}}}}}}}})
+        d['paths']['/upload'] = {'post': {'requestBody': {'$ref': '#/components/requestBodies/Upload'},
+            'responses': {'204': {'description': 'done', 'headers': {'X-Trace': {'$ref': '#/components/headers/Trace'}}}}}}
+        s = make_service(d, 'team', 'api', 'test.json')
+        endpoint = next(e for e in s['spec']['endpoints'] if e['path'] == '/upload')
+        body = endpoint['request']['body']
+        self.assertTrue(body['required'])
+        self.assertEqual(body['content']['multipart/form-data']['encoding']['file'], {
+            'contentType': 'image/png', 'headers': {'X-Trace': {'schema': {'type': 'string'}}}})
+        self.assertEqual(endpoint['responses']['204']['headers']['X-Trace'], {'schema': {'type': 'string'}})
+        self.assertNotIn('components', s['spec'])
+
+    def test_generated_only_schema_and_contract_tampering_is_rejected(self):
+        original = self.read(SERVICE)
+        changes = [
+            lambda s: s['spec']['schemas']['Member']['properties']['id'].update(type='invalid'),
+            lambda s: s['spec']['endpoints'][0]['request']['parameters'][0].update(style='invalid'),
+            lambda s: s['spec']['schemas']['Member']['properties'].update(x={'$ref': '#/schemas/Missing'}),
+            lambda s: s['spec']['schemas'].update(Unused={'type': 'string'}),
+            lambda s: s['spec']['endpoints'][0].update(security=[{'Missing': []}]),
+        ]
+        for edit in changes:
+            with self.subTest(edit=edit):
+                changed = copy.deepcopy(original)
+                edit(changed)
+                self.write(SERVICE, changed)
+                with self.assertRaises(CatalogError):
+                    build_snapshot(self.root, verify_sources=False)
+
+    def test_32_nested_multipart_encoding_is_not_discarded(self):
+        d = document_for('3.2.1')
+        content = {'multipart/mixed': {
+            'schema': {'type': 'array', 'prefixItems': [
+                {'type': 'object', 'properties': {'payload': {'type': 'string'}}},
+                {'type': 'array', 'items': {'type': 'string'}}],
+                'items': {'type': 'array', 'items': {'type': 'string'}}},
+            'prefixEncoding': [
+                {'contentType': 'multipart/form-data', 'encoding': {'payload': {'contentType': 'text/plain'}}},
+                {'contentType': 'multipart/mixed', 'prefixEncoding': [{'contentType': 'text/html'}],
+                 'itemEncoding': {'contentType': 'text/plain'}}],
+            'itemEncoding': {'contentType': 'multipart/mixed', 'itemEncoding': {'contentType': 'text/plain'}}}}
+        d['paths']['/batch'] = {'post': {'requestBody': {'content': content}, 'responses': {'204': {'description': 'OK'}}}}
+        self.write('openapi/team/batch-api.json', d)
+        generate(self.root, target='team/batch-api')
+        s = self.read('services/batch-api.yaml')
+        e = next(e for e in s['spec']['endpoints'] if e['path'] == '/batch')
+        self.assertEqual(e['request']['body']['content'], content)
+        build_snapshot(self.root, verify_sources=False)
+
+    def test_external_refs_are_preflighted_in_media_and_headers_before_validation(self):
+        d = document_for('3.2.1')
+        d['paths']['/upload'] = {'post': {'responses': {'200': {'description': 'OK',
+            'content': {'application/json': {'$ref': 'https://example.invalid/media'}}}}}}
+        with patch('openapi_catalog.validate_offline', side_effect=AssertionError('must not reach validator')):
+            with self.assertRaisesRegex(CatalogError, 'bundle external references'):
+                make_service(d, 'team', 'api', 'test.json')
+
+    def test_swagger_form_marker_and_hostless_scheme_are_preserved(self):
+        d = document_for('2.0')
+        d.pop('host')
+        s = make_service(d, 'team', 'api', 'test.json')
+        self.assertEqual(s['spec']['servers'], [{'url': '/api', 'schemes': ['https']}])
+        upload = next(e for e in s['spec']['endpoints'] if e['path'] == '/upload')
+        self.assertEqual(upload['request']['body']['form-serialization'], {'file': {}, 'tags': {'collection-format': 'multi'}})
+
+    def test_unsupported_schema_dialect_and_keywords_fail_without_writes(self):
+        before = (self.root / SERVICE).read_bytes()
+        for field, value in [('unknownConstraint', 1), ('$schema', 'https://example.invalid/dialect')]:
+            d = document_for('3.1.2')
+            d['components']['schemas']['Record'][field] = value
+            self.write('openapi/team/custom.json', d)
+            with self.assertRaisesRegex(CatalogError, 'unsupported schema|Unknown JSON Schema dialect'):
+                generate(self.root, target='team/custom')
+            self.assertFalse((self.root / 'services/custom.yaml').exists())
+            self.assertEqual(before, (self.root / SERVICE).read_bytes())
+
+    def test_discriminator_keeps_explicit_and_implicit_subtypes(self):
+        for version in ('2.0', '3.0.4', '3.1.2', '3.2.1'):
+            with self.subTest(version=version):
+                d = document_for(version)
+                registry = d['definitions'] if version == '2.0' else d['components']['schemas']
+                prefix = '#/definitions/' if version == '2.0' else '#/components/schemas/'
+                registry['Record']['properties']['kind'] = {'type': 'string'}
+                registry['Record']['required'] = ['id', 'kind']
+                registry['Record']['discriminator'] = 'kind' if version == '2.0' else {'propertyName': 'kind'}
+                registry['Child'] = {'allOf': [{'$ref': prefix + 'Record'}, {'type': 'object', 'properties': {'extra': {'type': 'string'}}}]}
+                registry['Unused'] = {'type': 'string'}
+                if version != '2.0':
+                    registry['Record']['discriminator']['mapping'] = {'explicit': 'Mapped'}
+                    registry['Mapped'] = {'type': 'object'}
+                s = make_service(d, 'team', 'api', 'test.json')
+                self.assertIn('Child', s['spec']['schemas'])
+                self.assertNotIn('Unused', s['spec']['schemas'])
+                if version != '2.0':
+                    self.assertIn('Mapped', s['spec']['schemas'])
+                    self.assertEqual(s['spec']['schemas']['Record']['discriminator']['mapping'], {'explicit': '#/schemas/Mapped'})

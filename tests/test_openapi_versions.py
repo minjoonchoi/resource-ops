@@ -22,7 +22,8 @@ class VersionTests(Fixture):
         document = document_for(version)
         self.write('openapi/compat-team/compat-api.json', document)
         generate(self.root, target='compat-team/compat-api')
-        self.assertEqual(self.read('services/compat-api.yaml')['spec']['openapi'], document)
+        self.assertEqual(self.read('services/compat-api.yaml')['spec']['openapi-version'], version)
+        self.assertNotIn('openapi', self.read('services/compat-api.yaml')['spec'])
         return document
 
     def add_usage(self, method='GET', path='/records/{id}', rules=None):
@@ -91,7 +92,7 @@ class VersionTests(Fixture):
         effective = self.add_usage('PUT')
         self.assertTrue(effective['request']['body']['required'])
         schema = effective['request']['body']['content']['application/json']['schema']
-        self.assertEqual(schema, {'$ref': '#/definitions/Record'})
+        self.assertEqual(schema, {'$ref': '#/schemas/Record'})
         self.assertEqual(effective['service']['servers'], [{'url': 'https://legacy.example.invalid/api'}])
 
     def test_swagger_form_files_and_collection_format_are_preserved(self):
@@ -100,7 +101,7 @@ class VersionTests(Fixture):
         body = effective['request']['body']
         schema = body['content']['multipart/form-data']['schema']
         self.assertEqual(schema['properties']['file'], {'type': 'string', 'format': 'binary'})
-        self.assertEqual(body['x-swagger-form-parameters'][1]['collectionFormat'], 'multi')
+        self.assertEqual(body['form-serialization']['tags']['collection-format'], 'multi')
         self.assertEqual(effective['service']['servers'], [{'url': 'http://legacy.example.invalid/api'}])
 
     def test_swagger_produces_override_and_unspecified_server_not_invented(self):
@@ -113,7 +114,7 @@ class VersionTests(Fixture):
         effective = self.add_usage()
         self.assertEqual(set(effective['responses']['200']['content']), {'application/xml'})
         self.assertEqual(effective['service']['servers'], [{'url': '/api'}])
-        self.assertIsNone(effective['service']['swagger-server']['host'])
+        self.assertNotIn('swagger-server', effective['service'])
 
     def test_swagger_missing_mime_types_does_not_assume_json(self):
         d = self.import_version('2.0')

@@ -10,6 +10,7 @@ from pathlib import Path
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
 
+from service_contract import schema_document
 from catalog_common import CatalogError, VERSION, read_yaml, require, validate_shape
 from generate_services import files, generate
 from history_selection import validate_history_selection
@@ -59,7 +60,7 @@ def resolve_action_endpoint(action, resources, routes):
 def resolve_page_action(page_name, usage, action, endpoint, service):
     """Keep native contracts intact and attach validated Page execution policies."""
     location = f"Page/{page_name}.actions[{usage['action']}]"
-    document = service["spec"]["openapi"]
+    document = schema_document(service)
     contract = endpoint["spec"]["operation"]
     validate_page_rules(usage, contract, document, location)
     raw_responses = {status: copy.deepcopy(dereference(response, document))
@@ -73,8 +74,6 @@ def resolve_page_action(page_name, usage, action, endpoint, service):
         effective["request"]["rules"] = copy.deepcopy(usage["request"])
     if "response" in usage:
         effective["response"] = copy.deepcopy(usage["response"])
-    if "swagger-server" in contract:
-        effective["service"]["swagger-server"] = copy.deepcopy(contract["swagger-server"])
     if "requestBody" in contract:
         effective["request"]["body"] = copy.deepcopy(dereference(contract["requestBody"], document))
     plugins = action["spec"].get("plugins", [])

@@ -29,6 +29,8 @@ def swagger_contract(document, operation, parameters, resolve):
         result['servers'] = [{'url': f'{scheme}://{host}{base_path}'} for scheme in schemes]
     else:
         result['servers'] = [{'url': (f'//{host}' if host else '') + base_path}]
+        if not host and schemes:
+            result['servers'][0]['schemes'] = copy.deepcopy(schemes)
 
     normal, body, form = [], [], []
     for parameter in parameters:

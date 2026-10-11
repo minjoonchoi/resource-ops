@@ -21,7 +21,7 @@ Config Server 자체 설정에 반영합니다. `@EnableConfigServer`와 버전 
 | 용도 | 요청 | 사용 데이터 |
 | --- | --- | --- |
 | 현재 브랜치 revision 확인 | `GET /resource-catalog/default/master` | Environment JSON의 `version`과 설정 marker |
-| 개별 리소스 조회 | `GET /resource-catalog/default/{sha}/services/member-api.yaml` | 생성된 Service YAML (OpenAPI·Endpoint 목록 포함) |
+| 개별 리소스 조회 | `GET /resource-catalog/default/{sha}/services/member-api.yaml` | 생성된 Service YAML (엔드포인트별 요청·응답 계약 포함) |
 
 루트 `resource-catalog.yaml`은 Environment API에 규격 버전을 알리는 작은 설정입니다.
 리소스 문서 자체를 Spring property source로 평탄화하거나 여러 YAML을 속성 우선순위로 합성하지 않습니다.
@@ -71,14 +71,16 @@ curl --fail --silent --show-error \
 `python scripts/catalog.py --root <download-directory> --from-generated`는 OpenAPI JSON 없이
 내려받은 생성 YAML과 Action/Page를 검증합니다. 검증기와 schema는 배포된 신뢰 버전을 사용합니다.
 CI에서는 이 옵션을 쓰지 않고 JSON 원본과 생성물의 일치까지 검사합니다.
-Service YAML 자체가 원본 OpenAPI를 포함하므로 Config Server 소비자가 JSON을 추가 조회할 필요는 없습니다.
+Service YAML에 호출에 필요한 요청/응답·참조 스키마·서버·인증 계약이 포함되므로 JSON을 추가 조회할 필요는 없습니다.
+참조 루트는 Service.spec이며 설명용 문서와 미사용 컴포넌트는 전달하지 않습니다.
+원본과 생성물의 동일성은 CI에서 검증합니다. --from-generated는 원본 대비 임의 수정 여부를 판정하지 않습니다.
 
 ## 연결 시 확인할 항목
 
 - `resource-catalog/default/master`에서 `version`과 `resource-ops.api-version` marker를 확인합니다.
 - 같은 SHA의 Git 트리에서 찾은 YAML 파일 6개를 읽어 리소스 8개와 참조 10개가 만들어지는지 확인합니다.
 - Action의 서비스 참조를 확인하고 직접 작성한 method·path를 등록 정의와 대조해 일치하는 Endpoint 연결을 도출하는지 확인합니다.
-- Page별 사용 계약 4개를 도출하고 동일 Action의 요청/응답 규칙가 각 Page에 독립적으로 적용되는지 확인합니다.
+- Page별 사용 계약 4개를 도출하고 동일 Action의 요청/응답 규칙이 각 Page에 독립적으로 적용되는지 확인합니다.
 - master가 변경되어도 이전 SHA 조회 결과가 그대로 유지되는지 확인합니다.
 - 존재하지 않는 파일·label, 잘못된 YAML, 네트워크 장애가 DB 변경으로 이어지지 않는지 확인합니다.
 - consumer는 지원하는 `api-version`의 스키마/검증기를 배포에 포함하고 알 수 없는 버전은 거부합니다.

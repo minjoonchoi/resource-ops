@@ -11,11 +11,14 @@ class GenerationTests(Fixture):
         with self.assertRaisesRegex(CatalogError, pattern):
             generate(self.root, mode)
 
-    def test_organization_filename_and_openapi_preservation(self):
+    def test_organization_filename_and_selected_contract(self):
         service = self.read(SERVICE)
         self.assertEqual(service['metadata']['name'], 'member-api')
         self.assertEqual(service['metadata']['organization'], 'member-team')
-        self.assertEqual(service['spec']['openapi'], self.read(SOURCE))
+        self.assertNotIn('openapi', service['spec'])
+        self.assertEqual(service['spec']['openapi-version'], self.read(SOURCE)['openapi'])
+        self.assertIn('request', service['spec']['endpoints'][0])
+        self.assertIn('responses', service['spec']['endpoints'][0])
         self.assertNotIn('source', service['spec'])
         self.assertEqual(len(service['spec']['endpoints']), 2)
 
@@ -46,7 +49,7 @@ class GenerationTests(Fixture):
 
     def test_changed_openapi_requires_local_regeneration(self):
         before = (self.root / SERVICE).read_bytes()
-        self.change(SOURCE, lambda d: d['info'].update(version='2.0.0'))
+        self.change(SOURCE, lambda d: d['info'].update(title='Updated API'))
         self.fail_generation('run: python scripts/generate_services.py')
         self.assertEqual(before, (self.root / SERVICE).read_bytes())
         generate(self.root)
@@ -154,7 +157,7 @@ class GenerationTests(Fixture):
         for ref in ('https://example.invalid/spec.json', '../spec.json', 'file:///etc/passwd'):
             with self.subTest(ref=ref):
                 self.change(SOURCE, lambda d: d['components']['schemas'].update(Member={'$ref': ref}))
-                with patch('openapi_catalog.validate') as validate:
+                with patch('openapi_catalog.validate_offline') as validate:
                     self.fail_generation('bundle external references')
                     validate.assert_not_called()
 
@@ -195,7 +198,8 @@ class GenerationTests(Fixture):
 
     def test_boolean_like_strings_and_status_codes_roundtrip(self):
         self.change_api(lambda d: d['info'].update(title='on', description='2026-10-11'))
-        self.assertEqual(self.read(SERVICE)['spec']['openapi'], self.read(SOURCE))
+        self.assertEqual(self.read(SERVICE)['metadata']['title'], 'on')
+        self.assertEqual(self.read(SOURCE)['info']['description'], '2026-10-11')
         build_snapshot(self.root)
 
     def test_cli_exit_code_and_consumer_snapshot(self):

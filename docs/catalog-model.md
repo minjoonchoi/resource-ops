@@ -19,12 +19,13 @@ JSON 파일명에서 `.json`만 제거한 값을 Service의 `metadata.name`으�
 스키마는 이전 camelCase 별칭을 허용하지 않습니다. snapshot의 소유 키도 `page-action-usages`,
 `content-sha256`처럼 맞춥니다. `kind`의 Service/Action/Page 값과 참조 식별자는 키가 아닙니다.
 OpenAPI/Swagger/JSON Schema 표준 키와 실제 API 필드·파라미터 이름은 원문 그대로 유지합니다.
-`requestBody`, `operationId`, `organizationCode`, `user_email` 등을 바꾸면 외부 계약이 깨집니다.
+`readOnly`, `additionalProperties`, `organizationCode`, `user_email` 등을 바꾸면 외부 계약이 깨집니다.
 GitHub Actions 등 외부 도구 설정 키도 해당 도구의 문법을 따릅니다.
 
 ## Service와 Endpoint
 
-하나의 생성 YAML에는 Service 문서 하나가 들어갑니다. spec에는 endpoints와 openapi만 저장합니다.
+하나의 생성 YAML에는 Service 문서 하나가 들어갑니다. OpenAPI에서 필요한 호출 계약만 추출하며
+원본 전체를 복사하는 spec.openapi와 중복 paths는 두지 않습니다.
 원본 위치는 metadata.organization/name으로 `openapi/<organization>/<name>.json`을 결정하므로
 spec.source는 저장하지 않습니다.
 
@@ -34,8 +35,17 @@ spec.source는 저장하지 않습니다.
 | `metadata.name` | JSON 파일명에서 확장자 제거 |
 | `metadata.organization` | 원본의 조직 디렉터리명 |
 | `metadata.title` | OpenAPI `info.title` |
-| `spec.openapi` | 파싱한 원본 OpenAPI 전체, 손실 없이 보존 |
-| `spec.endpoints[]` | `paths`의 각 HTTP operation에서 생성한 metadata·method·path |
+| `spec.openapi-version` | 원본 swagger/openapi의 명세 버전 |
+| `spec.servers` | 기본 서버의 url과 variables(default/enum) |
+| `spec.endpoints[]` | metadata·method·path·request·responses·security, 필요한 경우 servers |
+| `spec.schemas` | 요청/응답이 사용하는 schema의 전이·재귀 참조와 discriminator 대상 |
+| `spec.security-schemes` | 실제 사용하는 인증 정의 |
+
+엔드포인트의 request에는 합성된 parameters와 선택적인 body를 둡니다. body는 required/content를,
+responses는 상태별 content/schema와 headers를 보존합니다. media type과 표준 schema 문법은 유지합니다.
+응답 본문이 없는 상태는 빈 객체로 남깁니다. 상태코드는 Service에 보존하며 Page에만 200 depth를 두지 않습니다.
+서버·security 상속은 생성 시 확정하고 security가 없는 operation도 `security: []`를 명시합니다.
+전체 연결 예제와 추출/제외 목록은 [생성 설계](generation-design.md)를 따릅니다.
 
 Endpoint의 `metadata.organization`은 Service와 같습니다. `metadata.name`은
 `<service>.<method>.<원본 path>`로 생성합니다. 예: `member-api.GET./v1/members/{memberId}`.
@@ -43,8 +53,8 @@ Endpoint의 `metadata.organization`은 Service와 같습니다. `metadata.name`�
 경로의 `/`, `.`, `{}`, 대소문자, percent encoding 및 trailing slash를 변환하거나 생략하지 않습니다.
 Endpoint 이름은 경로 길이에 맞춰 보존하며 Service/Action/Page 이름의 128자 제한을 적용하지 않습니다.
 전체 문자열을 식별키로 사용하고 점으로 분리하여 service/method/path를 복원하지 않습니다.
-각 값은 별도 필드에서 읽으며, 검증기는 원문에서 재생성한 이름과 metadata가 일치하는지 확인합니다.
-`operationId`는 원문에 보존하며 필수 식별키로 사용하지 않습니다. 누락되어도 생성할 수 있고,
+각 값은 별도 필드에서 읽으며, 검증기는 method/path에서 계산한 이름과 metadata.organization의 일치를 확인합니다.
+CI는 원본 재생성 결과와 전체 파일을 비교합니다. `operationId`는 생성물에 복사하지 않으며 누락되어도 생성할 수 있고,
 설명·operationId가 바뀌어도 동일 서비스·method·path의 Endpoint identity는 유지됩니다.
 같은 method/path의 중복 route 및 전체 카탈로그의 Endpoint identity 중복은 거부합니다.
 특히 서비스명과 확장 메서드 모두 점을 포함하여 조합이 충돌하는 경우도 전체 검증에서 실패합니다.
@@ -52,25 +62,14 @@ Endpoint 이름은 경로 길이에 맞춰 보존하며 Service/Action/Page 이�
 Endpoint의 `metadata.description`은 operation의 공백이 아닌 `summary`를 우선 사용하고,
 없거나 공백이면 공백이 아닌 `description`을 사용합니다. 선택된 문자열은 원문 그대로 복사하며,
 둘 다 없거나 공백이면 필드를 생략합니다. `operationId`나 method/path로 설명을 대신 만들지 않습니다.
-Endpoint에는 `metadata.title`을 생성하지 않으며 원본 OpenAPI의 summary/description은 모두 보존합니다.
+Endpoint에는 `metadata.title`을 생성하지 않습니다. 선택되지 않은 설명은 원본 JSON에서 확인합니다.
 
-```yaml
-metadata:
-  name: member-api.GET./v1/members/{memberId}
-  organization: member-team
-  description: 회원 단건 조회
-method: GET
-path: /v1/members/{memberId}
-```
-
-기존 해시 기반 이름은 이 규칙으로 변경됩니다. 동기화 소비자는 새 snapshot의 Endpoint 및 관계를
-함께 반영해야 합니다. Action은 service/method/path로 연결되므로 이름 변경 때문에 수정할 필요가 없습니다.
-
-request/response는 OpenAPI의 `parameters`, `requestBody`, `responses`, `content`, `schema`로 보존합니다.
-`$ref`도 그대로 보존하고 **Service.spec.openapi를 참조 루트**로 해석합니다.
-Endpoint metadata 목록에는 request/response를 중복 복사하지 않습니다.
-DB snapshot을 만들 때 Endpoint 리소스를 추출하여 method/path, service 참조, OpenAPI operation을 저장합니다.
-Service의 원문과 Endpoint의 operation을 함께 보관해야 재사용 schema를 해석할 수 있습니다.
+`$ref: '#/schemas/Member'`는 **Service.spec을 참조 루트**로 해석합니다.
+원본의 components.schemas/definitions 참조를 이 위치로 재작성하고 순환 참조는 펼치지 않습니다.
+parameter/requestBody/response 같은 비-schema 참조 객체는 필요한 계약을 해당 endpoint에 직접 추출합니다.
+스키마의 타입·제약·default·직렬화는 유지하고 title/description/example 같은 문서용 정보는 제거합니다.
+실제 properties의 필드명과 enum/default/const의 데이터는 문서용 키로 취급하지 않습니다.
+DB snapshot의 내부 Endpoint 표현은 이 선택 계약을 사용하며 연결된 Service.schemas도 함께 보관해야 합니다.
 
 OpenAPI 기본 규칙대로 path 공통 parameter를 operation parameter가 `(in, name)` 기준으로 덮어씁니다.
 header 이름은 대소문자를 구분하지 않습니다. servers는 operation → path → 문서 순서로 상속하고,
@@ -78,8 +77,8 @@ header 이름은 대소문자를 구분하지 않습니다. servers는 operation
 하나의 base URL을 임의 선택하지 않습니다. security 역시 operation 설정 또는 문서 설정을 사용합니다.
 실제 서버 선택·변수 치환·인증·상대 URL 기준은 소비자의 실행 설정 책임입니다.
 
-Swagger 2.0도 같은 Service 구조에 원문을 보존합니다. body/formData·consumes/produces·서버 정보는
-snapshot에서 adapter로 합성하며 세부 규칙은 [버전 호환성 문서](openapi-compatibility.md)를 따릅니다.
+Swagger 2.0은 생성 단계에서 body/formData·consumes/produces·서버 정보를 공통 구조로 추출합니다.
+세부 규칙은 [버전 호환성 문서](openapi-compatibility.md)를 따릅니다.
 
 ## Action과 참조
 
@@ -376,7 +375,7 @@ request:
 - 미지정 필드는 호출자 입력을 사용합니다. request 생략도 같은 의미입니다.
   기존 `parameters`, `value`, `source: subject.email` 형식은 허용하지 않습니다.
 - query/body 내 필드만 지원합니다. query는 schema 방식, body는 단일 JSON media type이어야 합니다.
-  content/querystring 파라미터, form/multipart body는 원문에 보존하지만 이 규칙으로 수정하지 않습니다.
+  content/querystring 파라미터, form/multipart body는 Service 계약에 보존하지만 이 규칙으로 수정하지 않습니다.
 - 객체는 하위 필드에 규칙을 씁니다. 배열은 OpenAPI의 items를 따라 각 요소에 동일 규칙을 적용하며
   숫자 index나 `*`를 YAML에 쓰지 않습니다. scope는 배열의 각 대상 값이 모두 허용되어야 통과합니다.
   subject 값은 기존 배열 요소 각각에 주입하며 누락된 배열 요소를 임의 생성하지 않습니다.
@@ -416,7 +415,7 @@ extra: private
   `2XX`/`default` 계약을 사용해 검증해도 실행 시 201/400 등의 응답에는 이 규칙을 적용하지 않습니다.
 - response 전체를 생략하면 별도 화이트리스트/마스킹 없이 원본 계약을 사용합니다.
   `response: {}`나 빈 fields, false 값은 거부합니다. 필드를 제외하려면 목록에 작성하지 않습니다.
-- upstream 응답은 원본 OpenAPI로 검증한 후 화이트리스트와 마스킹을 적용합니다.
+- upstream 응답은 생성된 Service의 응답 계약으로 검증한 후 화이트리스트와 마스킹을 적용합니다.
   원본 required 필드도 Page 화이트리스트에서 생략할 수 있으므로 최종 출력에 원본 required를 다시 강제하지 않습니다.
   누락된 선택 필드는 만들지 않고, 명시적 null은 schema가 허용한 경우 유지합니다.
 - 명확한 단일 JSON media type과 정적 properties/items 및 내부 ref를 지원합니다.
@@ -455,17 +454,23 @@ snapshot의 `resources`에는 Service, 추출된 Endpoint, Action, Page를 포�
 `page-action-usages`의 key는 Page/Action이고 `endpoint`는 매칭된 Endpoint.metadata.name입니다.
 `effective`는 service의 name/servers, method/path/security, request의 parameters/body와 선택적 rules, 원본 responses를 포함합니다.
 선택적인 response.fields는 실제 HTTP 200에 적용할 화이트리스트/마스킹 규칙이며 원본 responses와 구분합니다.
-parameter/body에는 `source` 또는 `value`, 명시한 response에는 `fields`가 추가됩니다.
-content/schema/headers/links 등 원본 응답 속성을 보존하고 `$ref` 루트는 연결된 Service.spec.openapi입니다.
+parameter/body의 schema는 변경하지 않고 request.rules에 Page 규칙을 보존합니다.
+응답은 선택된 content/schema/headers를 보존하고 `$ref` 루트는 연결된 Service.spec입니다.
 이 파생 계약은 독립적인 OpenAPI 문서가 아니며 응답 schema는 projection 전 upstream 검증용입니다.
 
 ## 검증 경계
 
 Swagger 2.0과 OpenAPI 3.0.x/3.1.x/3.2.x를 각각의 표준 검증기로 검사합니다. JSON 중복 키·NaN/Infinity·16 MiB 초과 원본을 거부합니다.
 동일 커밋에서 오프라인 재현하기 위해 외부 파일/URL `$ref`는 bundle 후 입력해야 합니다.
-내부 JSON Pointer `$ref`와 재귀 schema는 보존하지만 `$id`, anchors, dynamic refs는 지원하지 않습니다.
+schema 참조는 components.schemas/definitions에 모아 입력해야 하며 내부 하위 경로와 재귀 참조도 지원합니다.
+`$id`, anchors, dynamic refs, 알 수 없는 dialect/검증 키워드는 지원하지 않습니다.
 callbacks/webhooks의 별도 Endpoint 등록은 현재 범위 밖입니다.
-callbacks/webhooks는 원문에 보존하며 `paths`의 inbound HTTP operation만 Endpoint로 등록합니다.
+callbacks/webhooks는 원본 JSON에만 남으며 `paths`의 inbound HTTP operation만 Endpoint로 등록합니다.
+
+생성된 Service만 받은 소비자도 원래 버전의 검증기로 요청/응답 구조·schema·참조를 검사합니다.
+검증용 OpenAPI envelope는 메모리에만 만들고 파일에 저장하지 않습니다. 원본 JSON이 없으면 설명이나
+유효한 계약의 임의 수정 여부를 판별할 수 없으므로 원본 일치는 CI의 재생성 비교로 보장합니다.
+모든 참조 검증은 외부 조회가 없는 닫힌 registry에서 수행합니다.
 
 YAML 중복 키·비문자열 map key·anchors/aliases·다중 문서·32 MiB 초과 파일·symlink·경로 이탈을 거부합니다.
 Config Server가 내용을 치환하지 않도록 `${...}`를 금지하고 `*-default.yaml`도 금지합니다.

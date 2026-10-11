@@ -4,12 +4,16 @@ import re
 from urllib.parse import unquote
 
 from jsonschema import Draft4Validator
-from openapi_spec_validator import (validate, OpenAPIV2SpecValidator, OpenAPIV30SpecValidator,
+from openapi_spec_validator import (OpenAPIV2SpecValidator, OpenAPIV30SpecValidator,
                                     OpenAPIV31SpecValidator, OpenAPIV32SpecValidator)
 from openapi_schema_validator import OAS30WriteValidator, OAS31Validator, OAS32Validator
+from jsonschema_path import SchemaPath
+from jsonschema_path.accessors import SchemaAccessor
+from referencing import Registry, Resource
+from referencing.jsonschema import DRAFT202012
 
 from catalog_common import CatalogError, NAME, VERSION, require
-from swagger_adapter import swagger_contract
+from openapi_walk import nodes
 
 METHODS = ('get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace')
 TEMPLATE = re.compile(r'\{([^{}]+)\}')
@@ -28,6 +32,25 @@ SPEC_VALIDATORS = {'2.0': OpenAPIV2SpecValidator, '3.0': PatchCompatibleOpenAPIV
                    '3.1': OpenAPIV31SpecValidator, '3.2': OpenAPIV32SpecValidator}
 VALUE_VALIDATORS = {'2.0': Draft4Validator, '3.0': OAS30WriteValidator,
                     '3.1': OAS31Validator, '3.2': OAS32Validator}
+
+
+def validate_offline(document, cls):
+    # jsonschema-path otherwise follows a literal default object's "$ref" as a schema ref.
+    schema_ids = {id(value) for kind, value in nodes(document) if kind in ('schema', 'parameter')}
+
+    class LiteralSafePath(SchemaPath):
+        def read_value(self):
+            if self.parts and self.parts[-1] == 'default':
+                parent = self.parent.read_value()
+                if id(parent) in schema_ids:
+                    return parent['default']
+            return super().read_value()
+
+    # A closed registry has no retrieval callback: neither network nor local files can be fetched,
+    # even if the upstream validator starts following another kind of reference in a future release.
+    registry = Registry().with_resource('', Resource(document, DRAFT202012))
+    path = LiteralSafePath(SchemaAccessor(document, registry.resolver()))
+    cls(path).validate()
 
 
 def version_family(document, location='OpenAPI'):
@@ -117,20 +140,14 @@ def operations(document):
 def validate_openapi(document, location):
     family = version_family(document, location)
     # Preflight before the third-party validator: it must never fetch remote or local files.
-    def visit(value):
-        if isinstance(value, dict):
+    for kind, value in nodes(document):
+        if kind == 'schema':
             require(not any(k in value for k in ('$id', '$anchor', '$dynamicRef', '$dynamicAnchor')),
                     f'{location}: bundle schemas using document-local JSON Pointers (no $id/anchors/dynamic refs)')
-            if '$ref' in value:
-                pointer(document, value['$ref'])
-            for child in value.values():
-                visit(child)
-        elif isinstance(value, list):
-            for child in value:
-                visit(child)
-    visit(document)
+        if '$ref' in value:
+            pointer(document, value['$ref'])
     try:
-        validate(document, cls=SPEC_VALIDATORS[family])
+        validate_offline(document, cls=SPEC_VALIDATORS[family])
     except Exception as exc:
         message = getattr(exc, 'message', None) or str(exc).splitlines()[0]
         path = '/'.join(map(str, getattr(exc, 'absolute_path', [])))
@@ -162,53 +179,31 @@ def make_service(document, organization, service, source):
     require(NAME.fullmatch(service) and len(service) <= 128 and not service.endswith('-default'),
             f'{source}: invalid service filename/name (or reserved -default suffix): {service}')
     validate_openapi(document, source)
-    endpoints = []
-    for path, method, _, operation in operations(document):
-        metadata = {'name': endpoint_name(service, method, path), 'organization': organization}
-        for field in ('summary', 'description'):
-            text = operation.get(field)
-            if isinstance(text, str) and text.strip():
-                metadata['description'] = text
-                break
-        endpoints.append({
-            'metadata': metadata,
-            'method': method, 'path': path,
-        })
-    return {
-        'api-version': VERSION, 'kind': 'Service',
-        'metadata': {'name': service, 'organization': organization, 'title': document['info']['title']},
-        'spec': {'endpoints': endpoints, 'openapi': copy.deepcopy(document)},
-    }
+    from service_contract import export_service, validate_contract
+    result = export_service(document, organization, service)
+    validate_contract(result)
+    return result
 
 
 def validate_service(service):
-    spec, meta = service['spec'], service['metadata']
-    expected_source = f"openapi/{meta['organization']}/{meta['name']}.json"
+    from service_contract import validate_contract
+    meta = service['metadata']
     require('/' not in meta['organization'] and meta['organization'] not in ('.', '..'), 'invalid organization directory')
-    expected = make_service(spec['openapi'], meta['organization'], meta['name'], expected_source)
-    require(service == expected, f"Service/{meta['name']}: generated metadata/endpoints differ from OpenAPI")
+    validate_contract(service)
 
 
 def extract_endpoints(service):
-    document, name = service['spec']['openapi'], service['metadata']['name']
-    index = {(e['method'], e['path']): e for e in service['spec']['endpoints']}
-    for path, method, item, operation in operations(document):
-        parameters = merged_parameters(document, item, operation)
-        if version_family(document) == '2.0':
-            contract = swagger_contract(document, operation, parameters, lambda value: dereference(value, document))
-        else:
-            contract = copy.deepcopy(operation)
-            contract['parameters'] = copy.deepcopy(parameters)
-            contract['servers'] = copy.deepcopy(operation.get('servers', item.get('servers', document.get('servers', []))) or [{'url': '/'}])
-        contract['security'] = copy.deepcopy(operation.get('security', document.get('security', [])))
+    from service_contract import endpoint_contract
+    for endpoint in service['spec']['endpoints']:
         yield {'api-version': VERSION, 'kind': 'Endpoint',
-               'metadata': copy.deepcopy(index[method, path]['metadata']),
-               'spec': {'service': name, 'method': method, 'path': path, 'operation': contract}}
+               'metadata': copy.deepcopy(endpoint['metadata']),
+               'spec': {'service': service['metadata']['name'], 'method': endpoint['method'],
+                        'path': endpoint['path'], 'operation': endpoint_contract(service, endpoint)}}
 
 
 def schema_accepts(document, schema, value):
     cls = VALUE_VALIDATORS[version_family(document)]
-    # Keep all local refs rooted at the original document without network resolution.
+    # Use the caller's schema context (source document or reduced Service contract).
     root = {**document, 'x-catalog-validation-schema': schema, '$ref': '#/x-catalog-validation-schema'}
     try:
         return cls(root, format_checker=cls.FORMAT_CHECKER).is_valid(value)

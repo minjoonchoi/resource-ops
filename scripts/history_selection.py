@@ -1,4 +1,5 @@
 """Validate optional history value selections against the native endpoint contract."""
+from service_contract import schema_document
 from catalog_common import require
 from openapi_catalog import dereference, leaf_schema, parameters_by_key
 
@@ -16,7 +17,7 @@ def validate_body_selection(body, fields, document, location):
 
 
 def validate_history_selection(action, endpoint, service):
-    document = service['spec']['openapi']
+    document = schema_document(service)
     contract = endpoint['spec']['operation']
     location = f"Action/{action['metadata']['name']}.history"
     for plugin in action['spec'].get('plugins', []):

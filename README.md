@@ -9,7 +9,7 @@
 | 경로 | 작성자 / 내용 |
 | --- | --- |
 | `openapi/<organization>/<service>.json` | 개발조직: 서비스의 OpenAPI 원본 |
-| `services/<service>.yaml` | 자동 생성: Service, Endpoint 목록, OpenAPI 원문 |
+| `services/<service>.yaml` | 자동 생성: Service와 엔드포인트별 호출·요청·응답 계약 |
 | `actions/<metadata.name>.yaml` | 개발조직: 업무와 서비스 참조·method·path |
 | `pages/<metadata.name>.yaml` | 화면 담당: Action 참조·요청 주입/scope 검증·응답 화이트리스트/마스킹 |
 | `scripts/generate_services.py` | 로컬·CI 공통 생성기 및 생성물 비교 |
@@ -19,19 +19,21 @@
 Service와 그 안의 모든 Endpoint에 `metadata.organization: member-team`을 넣으며,
 Service의 `metadata.name`은 JSON 파일의 확장자를 뺀 `member-api`입니다.
 조직이 달라도 같은 서비스 파일명은 사용할 수 없습니다.
-Service.spec에는 endpoints와 openapi만 저장하며 source 경로를 중복 저장하지 않습니다.
-
-서비스 YAML은 `spec.openapi`에 원본 OpenAPI를 보존하고 `spec.endpoints`에 엔드포인트
-식별자·설명·조직·method·path를 생성합니다. request/response를 별도 형식으로 다시 작성하지 않습니다.
-`servers`, `components`, `$ref`, `content`, security 등 원본 계약을 함께 보존합니다.
+Service.spec에는 `openapi-version`, `servers`, `endpoints`와 필요한 `schemas`, `security-schemes`를 저장합니다.
+각 endpoint에 metadata·method·path·request·responses·security를 모읍니다.
+원본은 `openapi/`의 JSON에 유지하고 생성 YAML에는 호출·필드 검증·직렬화에 필요한 계약만 추출합니다.
+`paths`/`openapi`/`source` 중복 depth는 없으며 설명용 문서, 예제, 미사용 컴포넌트는 복사하지 않습니다.
+공통 스키마는 실제 사용되는 것만 `schemas`에 두고 `$ref: '#/schemas/Member'`로 연결합니다.
+**참조 루트는 Service.spec**입니다. 표준 schema/content 문법은 그대로 사용합니다.
+[Service·Action·Page 연결 예제와 추출 규칙](docs/generation-design.md)을 참고합니다.
 
 Endpoint의 `metadata.name`은 `member-api.GET./v1/members/{memberId}`처럼
 `<서비스명>.<메소드>.<원본 경로>`이며 경로의 `/`, `.`, 대소문자 등을 그대로 보존합니다.
 `metadata.description`에는 operation의 summary를 우선 가져오고, 없거나 공백이면 description을
-사용합니다. 둘 다 없으면 설명 필드는 생략하며 원본 OpenAPI 내용은 그대로 보존합니다.
+사용합니다. 둘 다 없으면 설명 필드를 생략합니다.
 
 Catalog kind와 manifest는 두지 않습니다. `services/`, `actions/`, `pages/`에서 YAML을 직접 탐색하며,
-리소스 정의는 Service·Action·Page와 Service에서 추출하는 Endpoint로 구성합니다.
+작성/생성하는 YAML kind는 **Service·Action·Page**입니다. 엔드포인트는 Service 안에 포함합니다.
 
 ## 개발조직의 Action 작성
 
@@ -111,12 +113,12 @@ response:
 query/body의 실제 필드 깊이에 `source: subject`와 `field: nickname` 또는 `email`을 지정하면 사용자 값을 주입합니다.
 `source: scope`와 `name`은 사전 정의한 허용 값으로 입력을 검증합니다. UI가 주입값을 결정하지 않습니다.
 `response.fields`는 실제 HTTP 200에서 **명시된 필드만 포함하고 미지정 필드는 전부 drop**하는 화이트리스트입니다.
-true는 원래 값, mask는 사전 등록한 마스킹 규칙의 이름입니다. 배열 구조는 OpenAPI로 판단합니다.
+true는 원래 값, mask는 사전 등록한 마스킹 규칙의 이름입니다. 배열 구조는 생성된 Service 스키마로 판단합니다.
 response를 생략하면 원본 응답을 사용합니다. 같은 Action의 Page별 규칙은 독립적입니다.
 실제 주입·scope 값 검증·응답 처리 및 scope/mask 해석은 실행 서버의 구현 범위입니다.
 
 저장소 소유 YAML 키는 `api-version`, `resource-ops`처럼 kebab-case로 통일합니다.
-OpenAPI 표준 키(`requestBody`, `operationId` 등)와 실제 API 필드명(`organizationCode`, `user_email` 등),
+보존하는 OpenAPI/JSON Schema 표준 키(`readOnly`, `additionalProperties` 등)와 실제 API 필드명(`organizationCode`, `user_email` 등),
 GitHub Actions 등 외부 설정 문법은 원문을 보존합니다. 필드명을 바꾸면 API 계약이 달라지기 때문입니다.
 이전 apiVersion/overrides 형식은 지원하지 않습니다.
 
@@ -172,17 +174,19 @@ Fork에서 쓰기 권한을 얻기 위한 `pull_request_target`은 사용하지 
 ## 지원 범위와 연결
 
 Swagger **2.0**, OpenAPI **3.0.x / 3.1.x / 3.2.x JSON**을 버전별 검증기와 adapter로 처리합니다.
-버전은 최상위 `swagger`/`openapi`에서 판별하고 원문을 보존합니다. 문서 내부 JSON Pointer `$ref`를 지원하며
-외부 refs는 bundle해야 합니다. `$id`·anchor·dynamic ref는 현재 범위 밖입니다.
+버전은 원본 최상위 `swagger`/`openapi`에서 판별하고 `openapi-version`에 기록합니다.
+스키마 refs는 `components.schemas`/`definitions`의 이름 있는 정의에 모아 입력하며 내부 참조를 재작성합니다.
+외부 refs는 bundle해야 합니다. `$id`·anchor·dynamic ref와 미지원 dialect는 현재 범위 밖입니다.
 [버전별 공식 문서·호환성·검증 절차](docs/openapi-compatibility.md)와 루트 [AGENTS.md](AGENTS.md)에
 특정 파일 변환 및 호환성 작업 지침을 두었습니다.
-OpenAPI 원본은 보존하지만 Page의 응답 필드 선택은 단일 JSON media type의 명확한 leaf schema만 지원합니다.
+원본 JSON은 수정하지 않습니다. Page의 응답 필드 선택은 단일 JSON media type의 명확한 leaf schema만 지원합니다.
 복합 스키마와 여러 media type의 projection은 추측하지 않고 실패합니다.
 
 현재 예제는 가상 서비스 1개, 엔드포인트 2개, Action 3개, Page 2개이며
 snapshot은 리소스 8개·관계 10개·Page 사용 계약 4개를 포함합니다.
 실제 Config Server/DB reconciler 및 migration은 별도 구현이 필요합니다.
 
-- [카탈로그 규격·OpenAPI 보존·Page 요청/응답 규칙](docs/catalog-model.md)
+- [생성 계약과 Page 처리 설계](docs/generation-design.md)
+- [카탈로그 규격·Page 요청/응답 규칙](docs/catalog-model.md)
 - [Config Server에서 같은 SHA의 YAML 조회](docs/config-server.md)
 - [DB 동기화·삭제·실패·롤백 계약](docs/synchronization.md)

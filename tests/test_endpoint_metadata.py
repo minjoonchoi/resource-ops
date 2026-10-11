@@ -52,8 +52,8 @@ class EndpointMetadataTests(Fixture):
                     if expected is not None:
                         metadata['description'] = expected
                     self.assertEqual(entry['metadata'], metadata)
-                    self.assertEqual(result['spec']['openapi'], original)
                     self.assertEqual(document, original)
+                    self.assertNotIn('openapi', result['spec'])
 
     def test_description_changes_keep_action_endpoint_identity(self):
         before = build_snapshot(self.root)
@@ -73,7 +73,7 @@ class EndpointMetadataTests(Fixture):
 
     def test_generated_metadata_tampering_is_rejected_without_sources(self):
         original = self.read(SERVICE)
-        for field, value in [('name', 'member-api.GET./wrong'), ('description', 'wrong'),
+        for field, value in [('name', 'member-api.GET./wrong'), ('organization', 'wrong'),
                              ('title', 'old title')]:
             with self.subTest(field=field):
                 modified = copy.deepcopy(original)
@@ -82,6 +82,11 @@ class EndpointMetadataTests(Fixture):
                 with self.assertRaises(CatalogError):
                     build_snapshot(self.root, verify_sources=False)
         self.write(SERVICE, original)
+
+    def test_description_tampering_requires_source_comparison(self):
+        self.change(SERVICE, lambda s: s['spec']['endpoints'][0]['metadata'].update(description='wrong'))
+        build_snapshot(self.root, verify_sources=False)
+        self.invalid('generated files differ')
 
     def test_custom_methods_keep_case_and_punctuation(self):
         document = document_for('3.2.1')

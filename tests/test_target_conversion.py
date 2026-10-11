@@ -23,10 +23,10 @@ class TargetConversionTests(Fixture):
         generate(self.root)
         before = (self.root / 'services/other-api.yaml').read_bytes()
         other_mtime = (self.root / 'services/other-api.yaml').stat().st_mtime_ns
-        self.change(SOURCE, lambda d: d['info'].update(version='2.0'))
+        self.change(SOURCE, lambda d: d['info'].update(title='Updated API'))
         result = self.cli(TARGET)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.read(SERVICE)['spec']['openapi']['info']['version'], '2.0')
+        self.assertEqual(self.read(SERVICE)['metadata']['title'], 'Updated API')
         self.assertEqual(before, (self.root / 'services/other-api.yaml').read_bytes())
         self.assertEqual(other_mtime, (self.root / 'services/other-api.yaml').stat().st_mtime_ns)
 

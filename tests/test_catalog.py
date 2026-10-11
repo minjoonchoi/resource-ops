@@ -141,8 +141,9 @@ class CatalogTests(Fixture):
         body = {'required': True, 'content': {'application/json': {'schema': {'$ref': '#/components/schemas/Member'}}}}
         self.change_api(lambda d: d['paths'][DETAIL]['get'].update(requestBody=body))
         effective = self.effective(build_snapshot(self.root))
-        self.assertEqual(effective['responses'], self.read(SOURCE)['paths'][DETAIL]['get']['responses'])
-        self.assertEqual(effective['request']['body'], body)
+        self.assertEqual(effective['responses']['200']['content']['application/json']['schema'], {'$ref': '#/schemas/Member'})
+        self.assertEqual(effective['request']['body']['content']['application/json']['schema'], {'$ref': '#/schemas/Member'})
+        self.assertTrue(effective['request']['body']['required'])
         self.assertNotIn('rules', effective['request'])
 
     def test_server_change_propagates_without_action_edits(self):
@@ -192,8 +193,8 @@ class CatalogTests(Fixture):
         self.change_api(lambda d: d['paths'][DETAIL]['get']['responses'].update(
             {'204': {'description': 'empty'}, 'default': {'description': 'error'}}))
         response = self.effective(build_snapshot(self.root))['responses']
-        self.assertEqual(response['204'], {'description': 'empty'})
-        self.assertEqual(response['default'], {'description': 'error'})
+        self.assertEqual(response['204'], {})
+        self.assertEqual(response['default'], {})
 
     def test_projection_requires_single_json_content(self):
         self.change_api(lambda d: d['paths'][DETAIL]['get']['responses']['200']['content'].update(
