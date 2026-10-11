@@ -134,6 +134,6 @@ class HistorySelectionTests(Fixture):
                                  'responses': {'200': {'fields': ['/id']}}}}]}})
                 generate(self.root, target='team/compat-api')
                 snapshot = build_snapshot(self.root)
-                self.assertEqual(self.read('services/compat-api.yaml')['spec']['openapi-version'], version)
-                self.assertNotIn('openapi', self.read('services/compat-api.yaml')['spec'])
+                self.assertEqual(self.read('services/compat-api.yaml')['spec']['swagger' if version == '2.0' else 'openapi'], version)
+                self.assertNotIn('openapi-version', self.read('services/compat-api.yaml')['spec'])
                 self.assertEqual(snapshot, build_snapshot(self.root, verify_sources=False))

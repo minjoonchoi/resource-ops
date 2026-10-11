@@ -22,8 +22,8 @@ class VersionTests(Fixture):
         document = document_for(version)
         self.write('openapi/compat-team/compat-api.json', document)
         generate(self.root, target='compat-team/compat-api')
-        self.assertEqual(self.read('services/compat-api.yaml')['spec']['openapi-version'], version)
-        self.assertNotIn('openapi', self.read('services/compat-api.yaml')['spec'])
+        self.assertEqual(self.read('services/compat-api.yaml')['spec']['swagger' if version == '2.0' else 'openapi'], version)
+        self.assertNotIn('openapi-version', self.read('services/compat-api.yaml')['spec'])
         return document
 
     def add_usage(self, method='GET', path='/records/{id}', rules=None):
@@ -92,7 +92,7 @@ class VersionTests(Fixture):
         effective = self.add_usage('PUT')
         self.assertTrue(effective['request']['body']['required'])
         schema = effective['request']['body']['content']['application/json']['schema']
-        self.assertEqual(schema, {'$ref': '#/schemas/Record'})
+        self.assertEqual(schema, {'$ref': '#/definitions/Record'})
         self.assertEqual(effective['service']['servers'], [{'url': 'https://legacy.example.invalid/api'}])
 
     def test_swagger_form_files_and_collection_format_are_preserved(self):

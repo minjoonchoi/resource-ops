@@ -46,14 +46,17 @@ class EndpointMetadataTests(Fixture):
                     operation.update(fields)
                     original = copy.deepcopy(document)
                     result = make_service(document, 'team', 'api', 'openapi/team/api.json')
-                    entry = next(e for e in result['spec']['endpoints']
-                                 if e['method'] == 'GET' and e['path'] == '/records/{id}')
+                    operation = result['spec']['paths']['/records/{id}']['get']
+                    entry = next(e for e in extract_endpoints(result)
+                                 if e['spec']['method'] == 'GET' and e['spec']['path'] == '/records/{id}')
                     metadata = {'name': 'api.GET./records/{id}', 'organization': 'team'}
                     if expected is not None:
                         metadata['description'] = expected
                     self.assertEqual(entry['metadata'], metadata)
                     self.assertEqual(document, original)
-                    self.assertNotIn('openapi', result['spec'])
+                    self.assertEqual(operation['x-resource-ops']['metadata'],
+                                     {'name': 'api.GET./records/{id}', 'organization': 'team'})
+                    self.assertEqual(operation.get('description'), expected)
 
     def test_description_changes_keep_action_endpoint_identity(self):
         before = build_snapshot(self.root)
@@ -77,14 +80,14 @@ class EndpointMetadataTests(Fixture):
                              ('title', 'old title')]:
             with self.subTest(field=field):
                 modified = copy.deepcopy(original)
-                modified['spec']['endpoints'][0]['metadata'][field] = value
+                modified['spec']['paths'][LIST]['get']['x-resource-ops']['metadata'][field] = value
                 self.write(SERVICE, modified)
                 with self.assertRaises(CatalogError):
                     build_snapshot(self.root, verify_sources=False)
         self.write(SERVICE, original)
 
     def test_description_tampering_requires_source_comparison(self):
-        self.change(SERVICE, lambda s: s['spec']['endpoints'][0]['metadata'].update(description='wrong'))
+        self.change(SERVICE, lambda s: s['spec']['paths'][LIST]['get'].update(description='wrong'))
         build_snapshot(self.root, verify_sources=False)
         self.invalid('generated files differ')
 

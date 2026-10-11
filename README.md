@@ -19,18 +19,21 @@
 Service와 그 안의 모든 Endpoint에 `metadata.organization: member-team`을 넣으며,
 Service의 `metadata.name`은 JSON 파일의 확장자를 뺀 `member-api`입니다.
 조직이 달라도 같은 서비스 파일명은 사용할 수 없습니다.
-Service.spec에는 `openapi-version`, `servers`, `endpoints`와 필요한 `schemas`, `security-schemes`를 저장합니다.
-각 endpoint에 metadata·method·path·request·responses·security를 모읍니다.
-원본은 `openapi/`의 JSON에 유지하고 생성 YAML에는 호출·필드 검증·직렬화에 필요한 계약만 추출합니다.
-`paths`/`openapi`/`source` 중복 depth는 없으며 설명용 문서, 예제, 미사용 컴포넌트는 복사하지 않습니다.
-공통 스키마는 실제 사용되는 것만 `schemas`에 두고 `$ref: '#/schemas/Member'`로 연결합니다.
-**참조 루트는 Service.spec**입니다. 표준 schema/content 문법은 그대로 사용합니다.
-[Service·Action·Page 연결 예제와 추출 규칙](docs/generation-design.md)을 참고합니다.
+Service.spec 자체를 **독립적인 표준 OpenAPI 문서**로 저장합니다. 3.x는 `openapi`, `info`, `servers`,
+`paths`, 필요한 `components`를 사용하고 2.0은 `swagger`, `info`, `paths`, `definitions` 등 원래 문법을 유지합니다.
+OpenAPI 라이브러리에 `service["spec"]`을 바로 전달할 수 있어 DB 저장 후 재조회에도 별도 문서 재구성이 필요 없습니다.
+원본 전체를 복사하지는 않습니다. 호출·검증·직렬화·인증에 필요한 계약과 표준 필수 정보만 추출하고
+문서용 예제·태그·미사용 컴포넌트는 제외합니다. `spec.openapi`는 wrapper 객체가 아닌 버전 문자열입니다.
 
-Endpoint의 `metadata.name`은 `member-api.GET./v1/members/{memberId}`처럼
+**참조 루트는 Service.spec 전체**입니다. 3.x의 `#/components/schemas/Member`와 2.0의 `#/definitions/Record`를
+표준 위치로 보존합니다. DB에는 schema만 떼지 말고 같은 revision의 spec 전체를 보관해야 합니다.
+[Service·Action·Page 연결 예제와 DB 파싱 경계](docs/generation-design.md)를 참고합니다.
+
+각 operation의 `x-resource-ops.metadata.name`은 `member-api.GET./v1/members/{memberId}`처럼
 `<서비스명>.<메소드>.<원본 경로>`이며 경로의 `/`, `.`, 대소문자 등을 그대로 보존합니다.
-`metadata.description`에는 operation의 summary를 우선 가져오고, 없거나 공백이면 description을
-사용합니다. 둘 다 없으면 설명 필드를 생략합니다.
+`x-resource-ops.metadata.organization`은 Service와 같고, 확장 키는 OpenAPI 표준 문법에 맞습니다.
+operation.summary를 우선 선택해 표준 `description`에 넣으며 없거나 공백이면 원본 description을 사용합니다.
+둘 다 없으면 생략합니다. 이 값은 snapshot 내부 Endpoint.metadata.description에도 반영됩니다.
 
 Catalog kind와 manifest는 두지 않습니다. `services/`, `actions/`, `pages/`에서 YAML을 직접 탐색하며,
 작성/생성하는 YAML kind는 **Service·Action·Page**입니다. 엔드포인트는 Service 안에 포함합니다.
@@ -174,8 +177,8 @@ Fork에서 쓰기 권한을 얻기 위한 `pull_request_target`은 사용하지 
 ## 지원 범위와 연결
 
 Swagger **2.0**, OpenAPI **3.0.x / 3.1.x / 3.2.x JSON**을 버전별 검증기와 adapter로 처리합니다.
-버전은 원본 최상위 `swagger`/`openapi`에서 판별하고 `openapi-version`에 기록합니다.
-스키마 refs는 `components.schemas`/`definitions`의 이름 있는 정의에 모아 입력하며 내부 참조를 재작성합니다.
+버전은 원본 최상위 `swagger`/`openapi`에서 판별하고 Service.spec의 동일한 키에 보존합니다.
+스키마 refs는 `components.schemas`/`definitions`의 이름 있는 정의에 모아 입력하며 표준 참조 위치를 유지합니다.
 외부 refs는 bundle해야 합니다. `$id`·anchor·dynamic ref와 미지원 dialect는 현재 범위 밖입니다.
 [버전별 공식 문서·호환성·검증 절차](docs/openapi-compatibility.md)와 루트 [AGENTS.md](AGENTS.md)에
 특정 파일 변환 및 호환성 작업 지침을 두었습니다.

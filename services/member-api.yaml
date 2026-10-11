@@ -6,120 +6,128 @@ metadata:
   organization: member-team
   title: 회원 API
 spec:
-  endpoints:
-  - metadata:
-      description: 회원 목록 조회
-      name: member-api.GET./v1/members
-      organization: member-team
-    method: GET
-    path: /v1/members
-    request:
-      parameters:
-      - in: query
-        name: organizationCode
-        required: true
-        schema:
-          minLength: 1
-          type: string
-      - in: query
-        name: page
-        required: false
-        schema:
-          minimum: 1
-          type: integer
-      - in: query
-        name: size
-        required: true
-        schema:
-          maximum: 100
-          minimum: 1
-          type: integer
-    responses:
-      '200':
-        content:
-          application/json:
-            schema:
-              additionalProperties: false
-              properties:
-                items:
-                  items:
-                    $ref: '#/schemas/Member'
-                  type: array
-                total:
-                  minimum: 0
-                  type: integer
-              required:
-              - items
-              - total
-              type: object
-      '400':
-        content:
-          application/json:
-            schema:
-              additionalProperties: false
-              properties:
-                code:
-                  type: string
-                message:
-                  type: string
-              required:
-              - code
-              - message
-              type: object
-    security: []
-  - metadata:
-      description: 회원 단건 조회
-      name: member-api.GET./v1/members/{memberId}
-      organization: member-team
-    method: GET
-    path: /v1/members/{memberId}
-    request:
-      parameters:
-      - in: path
-        name: memberId
-        required: true
-        schema:
-          minLength: 1
-          type: string
-    responses:
-      '200':
-        content:
-          application/json:
-            schema:
-              $ref: '#/schemas/Member'
-      '404':
-        content:
-          application/json:
-            schema:
-              additionalProperties: false
-              properties:
-                code:
-                  type: string
-                message:
-                  type: string
-              required:
-              - code
-              - message
-              type: object
-    security: []
-  openapi-version: 3.0.3
-  schemas:
-    Member:
-      additionalProperties: false
-      properties:
-        email:
-          type: string
-        id:
-          type: string
-        nickname:
-          type: string
-        organizationCode:
-          type: string
-      required:
-      - id
-      - nickname
-      - email
-      - organizationCode
-      type: object
+  components:
+    schemas:
+      Member:
+        additionalProperties: false
+        properties:
+          email:
+            type: string
+          id:
+            type: string
+          nickname:
+            type: string
+          organizationCode:
+            type: string
+        required:
+        - id
+        - nickname
+        - email
+        - organizationCode
+        type: object
+  info:
+    title: 회원 API
+    version: 1.0.0
+  openapi: 3.0.3
+  paths:
+    /v1/members:
+      get:
+        description: 회원 목록 조회
+        parameters:
+        - in: query
+          name: organizationCode
+          required: true
+          schema:
+            minLength: 1
+            type: string
+        - in: query
+          name: page
+          required: false
+          schema:
+            minimum: 1
+            type: integer
+        - in: query
+          name: size
+          required: true
+          schema:
+            maximum: 100
+            minimum: 1
+            type: integer
+        responses:
+          '200':
+            content:
+              application/json:
+                schema:
+                  additionalProperties: false
+                  properties:
+                    items:
+                      items:
+                        $ref: '#/components/schemas/Member'
+                      type: array
+                    total:
+                      minimum: 0
+                      type: integer
+                  required:
+                  - items
+                  - total
+                  type: object
+            description: 회원 목록
+          '400':
+            content:
+              application/json:
+                schema:
+                  additionalProperties: false
+                  properties:
+                    code:
+                      type: string
+                    message:
+                      type: string
+                  required:
+                  - code
+                  - message
+                  type: object
+            description: 잘못된 조회 조건
+        security: []
+        x-resource-ops:
+          metadata:
+            name: member-api.GET./v1/members
+            organization: member-team
+    /v1/members/{memberId}:
+      get:
+        description: 회원 단건 조회
+        parameters:
+        - in: path
+          name: memberId
+          required: true
+          schema:
+            minLength: 1
+            type: string
+        responses:
+          '200':
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/Member'
+            description: 회원 상세
+          '404':
+            content:
+              application/json:
+                schema:
+                  additionalProperties: false
+                  properties:
+                    code:
+                      type: string
+                    message:
+                      type: string
+                  required:
+                  - code
+                  - message
+                  type: object
+            description: 회원 없음
+        security: []
+        x-resource-ops:
+          metadata:
+            name: member-api.GET./v1/members/{memberId}
+            organization: member-team
   servers:
   - url: https://members.example.invalid

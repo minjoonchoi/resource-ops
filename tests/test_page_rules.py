@@ -26,9 +26,9 @@ class PageRulesTests(Fixture):
         self.assertIn('page-action-usages', snapshot)
         self.assertIn('content-sha256', snapshot)
         service = self.read(SERVICE)
-        self.assertNotIn('openapi', service['spec'])
-        self.assertEqual(service['spec']['openapi-version'], self.read(SOURCE)['openapi'])
-        self.assertIn('organizationCode', service['spec']['schemas']['Member']['properties'])
+        self.assertNotIn('openapi-version', service['spec'])
+        self.assertEqual(service['spec']['openapi'], self.read(SOURCE)['openapi'])
+        self.assertIn('organizationCode', service['spec']['components']['schemas']['Member']['properties'])
         self.change('pages/members.yaml', lambda d: d.update(apiVersion=d.pop('api-version')))
         self.invalid('Additional properties')
 
@@ -115,7 +115,7 @@ class PageRulesTests(Fixture):
         self.assertNotIn('secret', self.effective(after)['response']['fields'])
         edge = next(r for r in after['relations'] if r['from'] == 'Page/members' and r['to'] == 'Action/members.detail.read')
         self.assertEqual(edge['response']['fields'], fields)
-        self.assertIn('secret', self.read(SERVICE)['spec']['schemas']['Member']['properties'])
+        self.assertIn('secret', self.read(SERVICE)['spec']['components']['schemas']['Member']['properties'])
 
     def test_200_contract_resolution_does_not_attach_rules_to_other_statuses(self):
         original = self.read(SOURCE)
@@ -182,5 +182,5 @@ class PageRulesTests(Fixture):
                 effective = self.effective(build_snapshot(self.root), 'compat', 'compat.write')
                 self.assertEqual(effective['request']['rules'], rules['request'])
                 self.assertEqual(effective['response'], rules['response'])
-                self.assertEqual(self.read('services/compat-api.yaml')['spec']['openapi-version'], version)
-                self.assertNotIn('openapi', self.read('services/compat-api.yaml')['spec'])
+                self.assertEqual(self.read('services/compat-api.yaml')['spec']['swagger' if version == '2.0' else 'openapi'], version)
+                self.assertNotIn('openapi-version', self.read('services/compat-api.yaml')['spec'])

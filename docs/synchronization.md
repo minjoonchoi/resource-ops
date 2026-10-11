@@ -23,8 +23,8 @@ DB drift가 생기면 같은 Git revision이라도 다시 비교해 desired stat
 어떤 파일도 다른 commit SHA에서 섞어 읽지 않습니다.
 
 1. Git 트리 탐색 완료와 경로 규칙을 확인하고, 리소스 문서는 YAML 문법·api-version·종류별 스키마로 검증합니다.
-   Service의 openapi-version에 맞게 선택된 요청/응답 계약을 검증하고 spec.endpoints의
-   metadata·method·path를 대조하여 내부 Endpoint 레코드를 추출합니다.
+   Service.spec.openapi/swagger로 버전별 OpenAPI 라이브러리를 선택하고 spec 자체를 검증합니다.
+   표준 paths의 method/path와 operation.x-resource-ops.metadata를 대조해 내부 Endpoint를 추출합니다.
    Service·Endpoint의 organization은 원본 디렉터리에서 생성한 값이며 identity는 kind/metadata.name입니다.
 2. 파일 목록·identity·참조·Endpoint 계약·Action 직접 명세 대조·Page별 요청/응답 규칙·Page 계층을 검증합니다.
 3. kind/name으로 리소스를 정렬하고 직접 명세의 대조 결과와 참조에서 네 가지 연결 및 Page별 최종 사용 계약을 도출합니다.
@@ -56,8 +56,12 @@ DB drift 확인 없이 `source-revision` 또는 hash가 같다는 이유만으�
 
 Page의 Action 사용 정의가 요청/응답 규칙의 원본입니다. `uses.request/response`와 `page-action-usages`는
 거기서 도출한 데이터이며 별도의 편집 원본으로 사용하지 않습니다.
-Service에는 선택된 호출 계약과 사용 스키마만 저장하며 Endpoint.operation의 `$ref` 루트는 **Service.spec**입니다.
-`#/schemas/Member`는 Service.spec.schemas.Member를 가리킵니다. 원본 JSON 추가 조회 없이 해석할 수 있습니다.
+Service에는 선택된 표준 OpenAPI 문서인 **spec 전체**를 JSON/JSONB 또는 YAML로 보관합니다.
+재조회 후 OpenAPI 라이브러리에 이 spec을 그대로 전달하고 원본 JSON이나 재구성용 adapter에 의존하지 않습니다.
+Endpoint.operation의 `$ref`도 같은 revision의 Service.spec 전체를 루트로 해석합니다.
+`#/components/schemas/Member`는 spec.components.schemas.Member, Swagger의 `#/definitions/Record`는
+spec.definitions.Record를 가리킵니다. schemas만 따로 저장하거나 Endpoint를 독립 문서로 다루면 참조가 끊어집니다.
+DB의 Service 연결 키/FK와 source-revision을 유지하며 재적재 시 파생 Endpoint/Page 사용 계약을 함께 다시 계산합니다.
 Action 원본의 `spec.endpoint`에 Service.metadata.name 참조·HTTP method/path를 저장하고, 요청/응답 처리 규칙은 Page 사용 정의에 저장합니다.
 Action의 `spec.plugins`는 플러그인 단일 배열과 설정을 저장하며
 `page-action-usages.plugins`에도 복사합니다. plugins 생략은 빈 배열입니다.
@@ -68,7 +72,8 @@ OpenAPI 계약과 대조하고 snapshot에 보존합니다. config 생략은 요
 실제 수집/필드 추출/이력 저장은 실행 서버 책임입니다.
 Action 입력에 Endpoint ID는 없으며 등록 정의와 일치함을 확인한 뒤 DB 연결 identity를 도출합니다.
 `page-action-usages.endpoint`는 대조 결과의 Endpoint 이름이고 effective.service에는 Service 이름과
-생성 시 상속을 확정한 servers가 들어갑니다. 보안 요구사항은 effective.security와 Service.security-schemes를 함께 해석합니다.
+생성 시 상속을 확정한 servers가 들어갑니다. 보안 요구사항은 effective.security와
+Service.spec.components.securitySchemes(3.x) 또는 spec.securityDefinitions(2.0)를 함께 해석합니다.
 DB 적재 편의를 위한 관계/FK와 작성자가 입력한 직접 명세를 구분해서 보존합니다.
 사용 계약의 key는 `(source-id, page, action)`입니다.
 Service·Endpoint·Action 직접 명세가 변경되면 일치 여부를 다시 검증하고 연결된 모든 Page의 effective를 다시 계산합니다.

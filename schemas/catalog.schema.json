@@ -193,107 +193,41 @@
       }
     },
     "service": {
+      "description": "A standalone, selected OpenAPI/Swagger document. Deep validation uses the version-specific OpenAPI library; x-resource-ops.metadata carries catalog endpoint identity.",
       "type": "object",
-      "additionalProperties": false,
       "required": [
-        "openapi-version",
-        "servers",
-        "endpoints"
+        "info",
+        "paths"
+      ],
+      "oneOf": [
+        {
+          "required": [
+            "openapi"
+          ],
+          "properties": {
+            "openapi": {
+              "type": "string",
+              "pattern": "^3\\.[012]\\.[0-9]+$"
+            }
+          }
+        },
+        {
+          "required": [
+            "swagger"
+          ],
+          "properties": {
+            "swagger": {
+              "const": "2.0"
+            }
+          }
+        }
       ],
       "properties": {
-        "endpoints": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "metadata",
-              "method",
-              "path",
-              "request",
-              "responses",
-              "security"
-            ],
-            "properties": {
-              "metadata": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": [
-                  "name",
-                  "organization"
-                ],
-                "properties": {
-                  "name": {
-                    "$ref": "#/$defs/text"
-                  },
-                  "organization": {
-                    "$ref": "#/$defs/text"
-                  },
-                  "description": {
-                    "$ref": "#/$defs/text"
-                  }
-                }
-              },
-              "method": {
-                "$ref": "#/$defs/httpMethod"
-              },
-              "path": {
-                "$ref": "#/$defs/endpointPath"
-              },
-              "request": {
-                "$ref": "#/$defs/contract-request"
-              },
-              "responses": {
-                "$ref": "#/$defs/contract-responses"
-              },
-              "security": {
-                "$ref": "#/$defs/contract-security"
-              },
-              "servers": {
-                "$ref": "#/$defs/contract-servers"
-              }
-            }
-          }
+        "info": {
+          "type": "object"
         },
-        "openapi-version": {
-          "type": "string",
-          "pattern": "^(2\\.0|3\\.[012]\\.[0-9]+)$"
-        },
-        "servers": {
-          "$ref": "#/$defs/contract-servers"
-        },
-        "schemas": {
-          "type": "object",
-          "minProperties": 1,
-          "additionalProperties": {
-            "type": [
-              "object",
-              "boolean"
-            ]
-          }
-        },
-        "security-schemes": {
-          "type": "object",
-          "minProperties": 1,
-          "additionalProperties": {
-            "type": "object",
-            "required": [
-              "type"
-            ],
-            "properties": {
-              "type": {
-                "enum": [
-                  "basic",
-                  "apiKey",
-                  "http",
-                  "oauth2",
-                  "openIdConnect",
-                  "mutualTLS"
-                ]
-              }
-            }
-          }
+        "paths": {
+          "type": "object"
         }
       }
     },
@@ -601,349 +535,6 @@
         }
       },
       "minProperties": 1
-    },
-    "contract-parameter": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "name": {
-          "type": "string",
-          "minLength": 1
-        },
-        "in": {
-          "enum": [
-            "path",
-            "query",
-            "header",
-            "cookie",
-            "querystring"
-          ]
-        },
-        "required": {
-          "type": "boolean"
-        },
-        "style": {
-          "type": "string",
-          "minLength": 1
-        },
-        "explode": {
-          "type": "boolean"
-        },
-        "allowEmptyValue": {
-          "type": "boolean"
-        },
-        "allowReserved": {
-          "type": "boolean"
-        },
-        "collectionFormat": {
-          "enum": [
-            "csv",
-            "ssv",
-            "tsv",
-            "pipes",
-            "multi"
-          ]
-        },
-        "schema": {
-          "type": [
-            "object",
-            "boolean"
-          ]
-        },
-        "content": {
-          "$ref": "#/$defs/contract-content"
-        }
-      },
-      "required": [
-        "name",
-        "in"
-      ],
-      "oneOf": [
-        {
-          "required": [
-            "schema"
-          ]
-        },
-        {
-          "required": [
-            "content"
-          ]
-        }
-      ]
-    },
-    "contract-header": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "required": {
-          "type": "boolean"
-        },
-        "style": {
-          "type": "string",
-          "minLength": 1
-        },
-        "explode": {
-          "type": "boolean"
-        },
-        "allowEmptyValue": {
-          "type": "boolean"
-        },
-        "allowReserved": {
-          "type": "boolean"
-        },
-        "collectionFormat": {
-          "enum": [
-            "csv",
-            "ssv",
-            "tsv",
-            "pipes",
-            "multi"
-          ]
-        },
-        "schema": {
-          "type": [
-            "object",
-            "boolean"
-          ]
-        },
-        "content": {
-          "$ref": "#/$defs/contract-content"
-        }
-      },
-      "required": [],
-      "oneOf": [
-        {
-          "required": [
-            "schema"
-          ]
-        },
-        {
-          "required": [
-            "content"
-          ]
-        }
-      ]
-    },
-    "contract-encoding": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "contentType": {
-          "type": "string",
-          "minLength": 1
-        },
-        "style": {
-          "type": "string",
-          "minLength": 1
-        },
-        "explode": {
-          "type": "boolean"
-        },
-        "allowReserved": {
-          "type": "boolean"
-        },
-        "headers": {
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/$defs/contract-header"
-          }
-        },
-        "encoding": {
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/$defs/contract-encoding"
-          }
-        },
-        "prefixEncoding": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/contract-encoding"
-          }
-        },
-        "itemEncoding": {
-          "$ref": "#/$defs/contract-encoding"
-        }
-      },
-      "required": []
-    },
-    "contract-content": {
-      "type": "object",
-      "minProperties": 1,
-      "additionalProperties": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "schema": {
-            "type": [
-              "object",
-              "boolean"
-            ]
-          },
-          "itemSchema": {
-            "type": [
-              "object",
-              "boolean"
-            ]
-          },
-          "encoding": {
-            "type": "object",
-            "additionalProperties": {
-              "$ref": "#/$defs/contract-encoding"
-            }
-          },
-          "prefixEncoding": {
-            "type": "array",
-            "items": {
-              "$ref": "#/$defs/contract-encoding"
-            }
-          },
-          "itemEncoding": {
-            "$ref": "#/$defs/contract-encoding"
-          }
-        },
-        "required": []
-      }
-    },
-    "contract-body": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "required": {
-          "type": "boolean"
-        },
-        "content": {
-          "$ref": "#/$defs/contract-content"
-        },
-        "form-serialization": {
-          "type": "object",
-          "minProperties": 1,
-          "additionalProperties": {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "collection-format": {
-                "enum": [
-                  "csv",
-                  "ssv",
-                  "tsv",
-                  "pipes",
-                  "multi"
-                ]
-              }
-            }
-          }
-        }
-      },
-      "required": [
-        "content"
-      ]
-    },
-    "contract-request": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "parameters": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/contract-parameter"
-          }
-        },
-        "body": {
-          "$ref": "#/$defs/contract-body"
-        }
-      },
-      "required": [
-        "parameters"
-      ]
-    },
-    "contract-response": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "headers": {
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/$defs/contract-header"
-          }
-        },
-        "content": {
-          "$ref": "#/$defs/contract-content"
-        }
-      }
-    },
-    "contract-responses": {
-      "type": "object",
-      "propertyNames": {
-        "pattern": "^([1-5][0-9]{2}|[1-5]XX|default)$"
-      },
-      "additionalProperties": {
-        "$ref": "#/$defs/contract-response"
-      }
-    },
-    "contract-security": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "type": "string"
-          }
-        }
-      }
-    },
-    "contract-servers": {
-      "type": "array",
-      "minItems": 1,
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "url": {
-            "type": "string",
-            "minLength": 1
-          },
-          "variables": {
-            "type": "object",
-            "additionalProperties": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "default": {
-                  "type": "string"
-                },
-                "enum": {
-                  "type": "array",
-                  "minItems": 1,
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              },
-              "required": [
-                "default"
-              ]
-            }
-          },
-          "schemes": {
-            "type": "array",
-            "minItems": 1,
-            "uniqueItems": true,
-            "items": {
-              "enum": [
-                "http",
-                "https",
-                "ws",
-                "wss"
-              ]
-            }
-          }
-        },
-        "required": [
-          "url"
-        ]
-      }
     }
   }
 }

@@ -155,6 +155,8 @@ def validate_openapi(document, location):
     require(isinstance(document.get('paths'), dict), f'{location}: paths is required for an endpoint catalog')
     shapes = set()
     for path, method, item, operation in operations(document):
+        require(re.fullmatch(r'/(?!/)[^?#\s]*', path), f'{location}: invalid endpoint path {path!r}')
+        require(re.fullmatch(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+", method), f'{location}: invalid HTTP method {method!r}')
         shape = method, TEMPLATE.sub('{}', path)
         require(shape not in shapes, f'{location}: duplicate method/path route {method.upper()} {path}')
         shapes.add(shape)
@@ -194,16 +196,19 @@ def validate_service(service):
 
 def extract_endpoints(service):
     from service_contract import endpoint_contract
-    for endpoint in service['spec']['endpoints']:
-        yield {'api-version': VERSION, 'kind': 'Endpoint',
-               'metadata': copy.deepcopy(endpoint['metadata']),
-               'spec': {'service': service['metadata']['name'], 'method': endpoint['method'],
-                        'path': endpoint['path'], 'operation': endpoint_contract(service, endpoint)}}
+    document = service['spec']
+    for path, method, item, operation in operations(document):
+        metadata = copy.deepcopy(operation['x-resource-ops']['metadata'])
+        if 'description' in operation:
+            metadata['description'] = operation['description']
+        yield {'api-version': VERSION, 'kind': 'Endpoint', 'metadata': metadata,
+               'spec': {'service': service['metadata']['name'], 'method': method, 'path': path,
+                        'operation': endpoint_contract(document, item, operation)}}
 
 
 def schema_accepts(document, schema, value):
     cls = VALUE_VALIDATORS[version_family(document)]
-    # Use the caller's schema context (source document or reduced Service contract).
+    # Use the caller's OpenAPI document (source or selected Service.spec) as the ref root.
     root = {**document, 'x-catalog-validation-schema': schema, '$ref': '#/x-catalog-validation-schema'}
     try:
         return cls(root, format_checker=cls.FORMAT_CHECKER).is_valid(value)

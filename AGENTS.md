@@ -4,8 +4,10 @@
 
 사용자가 특정 JSON의 변환·서비스 YAML 생성·갱신을 요청하면 반드시 저장소의 생성 스크립트를 실행한다.
 생성 YAML을 직접 작성하거나 LLM으로 JSON을 YAML로 옮겨 적지 않는다.
-Service.spec에는 openapi-version/servers/endpoints와 필요한 schemas/security-schemes만 둔다.
-각 endpoint에 request/responses/security를 추출하며 OpenAPI 전체나 paths를 복사하지 않는다.
+Service.spec 자체를 선택된 표준 OpenAPI/Swagger 문서로 생성한다. 3.x의 openapi/info/paths/components,
+2.0의 swagger/info/paths/definitions와 원래 버전을 유지하고 custom openapi-version/endpoints/schemas는 쓰지 않는다.
+호출·검증·직렬화·인증 계약과 표준 필수 정보를 보존하며 전체 원문을 무조건 복사하지 않는다.
+operation의 x-resource-ops.metadata에 name/organization을 넣고 선택한 설명은 표준 description에 둔다.
 source는 metadata.organization/name으로 유도한다. 설계 기준은 docs/generation-design.md를 따른다.
 
 1. 요청을 `openapi/<organization>/<service>.json`에 대응시킨다. 파일명이 서비스명이고 바로 위 디렉터리가 조직이다.
@@ -23,7 +25,8 @@ source는 metadata.organization/name으로 유도한다. 설계 기준은 docs/g
    ```
 
 6. `services/member-api.yaml`의 metadata.name/organization, 엔드포인트별 요청·응답·직렬화·인증 계약을 확인한다.
-   원본 JSON은 수정하지 않는다. 사용되는 schema와 그 전이/재귀 참조만 추출하며 $ref 루트는 Service.spec이다.
+   원본 JSON은 수정하지 않는다. 사용되는 schema와 그 전이/재귀 참조만 추출하며 $ref 루트는 Service.spec 전체다.
+   #/components/schemas 또는 #/definitions 참조를 유지한다. envelope 전체나 schemas만 parser에 넘기지 않는다.
    설명 전용 정보와 미사용 컴포넌트를 제거해도 호출/검증 제약이 누락되지 않았는지 diff를 확인한다.
    생성 스크립트는 선택한 서비스만 갱신한다. 다른 서비스 YAML을 갱신하거나 삭제하지 않는다.
 7. 전체 카탈로그 검증을 수행한다. 다른 서비스의 기존 오류가 나오면 그 파일을 임의 변경하지 말고
@@ -49,7 +52,7 @@ Action/Page 정의는 별도 요청 없이 생성기에서 자동 생성하거�
 ## 명세 버전 호환성 작업
 
 버전 문제를 피하려고 원본 JSON의 swagger/openapi 값을 바꾸거나 필드를 삭제해서 통과시키지 않는다.
-생성 YAML은 별도의 선택적 계약이다. 문서용 정보 제거와 실행/검증 제약 누락을 구분한다.
+생성 YAML의 spec은 표준 문법을 유지한 선택적 계약이다. 문서용 정보 제거와 실행/검증 제약 누락을 구분한다.
 다음 순서로 처리한다.
 
 1. 정확한 버전과 실패한 객체/필드를 식별하고 `docs/openapi-compatibility.md`에 연결된 공식 명세에서 확인한다.
@@ -58,7 +61,9 @@ Action/Page 정의는 별도 요청 없이 생성기에서 자동 생성하거�
 3. 검증 라이브러리의 공식 문서와 설치된 버전의 구현을 확인하고 적합한 **버전별 검증기**를 선택한다.
    알려지지 않은 major/minor를 기존 검증기에 무조건 통과시키지 않는다.
 4. 원본 JSON은 그대로 보존한다. 필요한 차이는 생성기/카탈로그 adapter에 구현한다.
-   원본과 생성된 계약 모두 버전별 검증기를 적용한다. 검증용 임시 OpenAPI envelope를 출력 YAML에 저장하지 않는다.
+   원본과 생성된 spec 자체에 버전별 검증기를 적용한다. 검증용 임시 OpenAPI envelope를 재구성하지 않는다.
+   info.title/version 및 버전별 필수 response.description을 보존한다. DB 재조회 후 spec만으로 라이브러리가
+   참조를 해석할 수 있는지 왕복 테스트로 확인한다. 2.0 adapter는 내부 Page/history 조회에만 사용한다.
    외부 ref 조회를 금지하며 schema.default/enum/const의 실제 데이터와 문서 참조를 구분한다.
    Page 요청/응답 규칙 지원 범위와 원본 가져오기 지원 범위를 구분하며, 해석할 수 없는 기능을 조용히 버리지 않는다.
 5. `tests/fixtures/openapi/`에 해당 버전의 최소 재현 예제를 추가하고

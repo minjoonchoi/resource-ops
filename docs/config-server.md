@@ -72,7 +72,8 @@ curl --fail --silent --show-error \
 내려받은 생성 YAML과 Action/Page를 검증합니다. 검증기와 schema는 배포된 신뢰 버전을 사용합니다.
 CI에서는 이 옵션을 쓰지 않고 JSON 원본과 생성물의 일치까지 검사합니다.
 Service YAML에 호출에 필요한 요청/응답·참조 스키마·서버·인증 계약이 포함되므로 JSON을 추가 조회할 필요는 없습니다.
-참조 루트는 Service.spec이며 설명용 문서와 미사용 컴포넌트는 전달하지 않습니다.
+OpenAPI 라이브러리 입력과 참조 루트는 Service.spec 전체입니다. 이 객체를 추출하면 별도 문서 재구성 없이 검증할 수 있습니다.
+표준 info/response.description과 선택한 operation 설명은 유지하며 그 외 문서용 정보와 미사용 컴포넌트는 전달하지 않습니다.
 원본과 생성물의 동일성은 CI에서 검증합니다. --from-generated는 원본 대비 임의 수정 여부를 판정하지 않습니다.
 
 ## 연결 시 확인할 항목

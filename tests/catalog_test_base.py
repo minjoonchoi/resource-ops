@@ -10,7 +10,7 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 from catalog import CatalogError, build_snapshot
 from generate_services import generate
-from openapi_catalog import endpoint_name
+from openapi_catalog import endpoint_name, extract_endpoints, operations
 
 SOURCE = 'openapi/member-team/member-api.json'
 SERVICE = 'services/member-api.yaml'

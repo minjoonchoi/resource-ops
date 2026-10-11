@@ -15,12 +15,12 @@ class GenerationTests(Fixture):
         service = self.read(SERVICE)
         self.assertEqual(service['metadata']['name'], 'member-api')
         self.assertEqual(service['metadata']['organization'], 'member-team')
-        self.assertNotIn('openapi', service['spec'])
-        self.assertEqual(service['spec']['openapi-version'], self.read(SOURCE)['openapi'])
-        self.assertIn('request', service['spec']['endpoints'][0])
-        self.assertIn('responses', service['spec']['endpoints'][0])
+        self.assertNotIn('openapi-version', service['spec'])
+        self.assertEqual(service['spec']['openapi'], self.read(SOURCE)['openapi'])
+        self.assertIn('parameters', service['spec']['paths'][LIST]['get'])
+        self.assertIn('responses', service['spec']['paths'][LIST]['get'])
         self.assertNotIn('source', service['spec'])
-        self.assertEqual(len(service['spec']['endpoints']), 2)
+        self.assertEqual(len(list(operations(service['spec']))), 2)
 
     def test_new_service_auto_creation_matches_local_generation(self):
         expected = (self.root / SERVICE).read_bytes()
@@ -78,7 +78,7 @@ class GenerationTests(Fixture):
         (self.root / SOURCE).unlink()
         generate(self.root)
         self.assertEqual(self.read(SERVICE)['metadata']['organization'], '회원개발팀')
-        self.assertTrue(all(e['metadata']['organization'] == '회원개발팀' for e in self.read(SERVICE)['spec']['endpoints']))
+        self.assertTrue(all(e['metadata']['organization'] == '회원개발팀' for e in extract_endpoints(self.read(SERVICE))))
 
     def test_new_service_generation_only_writes_service(self):
         self.write('openapi/other-team/other-api.json', self.read(SOURCE))
@@ -173,9 +173,9 @@ class GenerationTests(Fixture):
         def edit(d):
             d['paths'][LIST]['get'].pop('operationId')
             d['paths'][DETAIL]['get']['operationId'] = 'getMemberById'
-        before = [e['metadata']['name'] for e in self.read(SERVICE)['spec']['endpoints']]
+        before = [e['metadata']['name'] for e in extract_endpoints(self.read(SERVICE))]
         self.change_api(edit)
-        self.assertEqual(before, [e['metadata']['name'] for e in self.read(SERVICE)['spec']['endpoints']])
+        self.assertEqual(before, [e['metadata']['name'] for e in extract_endpoints(self.read(SERVICE))])
         build_snapshot(self.root)
 
     def test_duplicate_operation_ids_are_rejected(self):
