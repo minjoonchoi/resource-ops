@@ -24,22 +24,20 @@ Spring Cloud Config Server가 이 저장소의 특정 Git 커밋을 제공하고
 | --- | --- | --- |
 | `Server` | API를 제공하는 논리 서버와 base URL | 없음 |
 | `Endpoint` | 서버의 HTTP method/path와 원본 요청·응답 계약 | `spec.server` → Server 1개 |
-| `Action` | 업무/권한 단위와 호출할 API 직접 명세 | `service.name/baseUrl` + `method` + `path` 대조 |
+| `Action` | 업무/권한 단위와 호출할 API 직접 명세 | `service` → Server 참조, `method` + `path` 대조 |
 | `Page` | 화면 경로와 Action별 Endpoint override | `spec.actions[].action` → Action 여러 개, `spec.parent` → 상위 Page |
 
-Endpoint가 원본 요청·응답 계약을 정의하고 Action은 서비스·HTTP 메서드·경로를 직접 명시합니다.
+Endpoint가 원본 요청·응답 계약을 정의하고 Action은 서비스를 이름으로 참조하고 HTTP 메서드·경로를 직접 명시합니다.
 Action 파일만 읽어도 호출 대상을 알 수 있으며 Endpoint ID를 작성하지 않습니다.
 
 ```yaml
 spec:
-  service:
-    name: member-api
-    baseUrl: https://members.example.invalid
+  service: member-api
   method: GET
   path: /v1/members/{memberId}
 ```
 
-검증 스크립트가 서비스명·주소를 등록된 Server와 대조하고, 동일 서비스의 method/path와
+검증 스크립트가 서비스 참조가 등록된 Server를 가리키는지 확인하고, 동일 서비스의 method/path와
 정확히 일치하는 Endpoint를 확인합니다. 경로 변수명도 일치해야 하며 잘못된 명세는 CI에서 실패합니다.
 실제 페이지의 사용 방식은 `Page.spec.actions[].overrides`에 **원본에서 달라지는 부분만** 작성합니다.
 override를 생략하면 Endpoint를 그대로 상속하며, parameter는 `(in, name)`, 응답은 상태코드별로 적용합니다.
@@ -95,7 +93,7 @@ snapshot은 원본 리소스와 `providedBy`, `invokes`, `uses`, `childOf` 관�
 ## 변경 절차
 
 1. 작업 브랜치에서 YAML을 생성·수정하고 `manifest.yaml` 목록을 갱신합니다.
-2. 전체 검증을 실행합니다. 서비스 주소나 Endpoint method/path를 바꿀 때 관련 Action 명세도 같은 PR에서 변경합니다.
+2. 전체 검증을 실행합니다. Endpoint method/path를 바꿀 때 관련 Action 명세도 같은 PR에서 변경합니다. 서비스 주소는 Server에서만 변경합니다.
 3. PR에서 원본 계약, Page별 Action 사용 방식, 관계 변경 및 삭제 영향을 검토합니다.
 4. PR을 `master`에 병합합니다. 동기화 서버가 병합된 HEAD의 커밋 SHA를 확정합니다.
 5. 해당 SHA의 manifest와 모든 리소스를 읽고 전체 검증·diff 후 한 트랜잭션으로 반영합니다.

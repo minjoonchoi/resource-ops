@@ -11,9 +11,7 @@ metadata:
   name: members.detail.read
   title: 회원 기본 정보 보기
 spec:
-  service:
-    name: member-api
-    baseUrl: https://members.example.invalid
+  service: member-api
   method: GET
   path: /v1/members/{memberId}
 ```
@@ -23,7 +21,8 @@ spec:
 - 파일명은 `metadata.name.yaml`, 디렉터리는 kind별 복수형으로 고정합니다.
 - Config Server의 profile 파일 선택과 충돌하는 `-default` 이름 접미사는 금지합니다.
 - 이름 변경은 삭제+생성입니다. 파일과 모든 참조를 함께 변경하고 삭제 영향을 검토합니다.
-- Endpoint.server와 Page.actions[].action/parent 참조는 문자열 이름을 사용합니다. Action은 서비스 정보와 method/path를 직접 작성합니다.
+- 파일 간 참조 식별키는 대상 정의의 `metadata.name`입니다. 파일 경로·표시용 title·URL은 참조 키로 사용하지 않습니다. 참조 필드가 대상 kind를 결정하므로 다른 kind의 같은 이름과 혼동하지 않습니다.
+- Endpoint.server, Action.service와 Page.actions[].action/parent 참조는 문자열 이름을 사용합니다. Action의 method/path는 직접 작성합니다.
 - 알 수 없는 필드는 실패합니다. 확장은 스키마·검증기·소비자·문서를 함께 변경합니다.
 - wire 필드명은 원본 그대로 사용합니다. `organization_code`와 `organizationCode`를 자동 변환하지 않습니다.
 - 환경·리전은 리소스 identity에 포함하지 않습니다. 현재 v1은 공통 카탈로그 하나이며 프로파일별 오버레이를 지원하지 않습니다.
@@ -58,20 +57,19 @@ scalar 타입, `required`, `enum`, `const`, 숫자 범위, 문자열 길이, 배
 
 ## Action과 Page별 사용 정의
 
-Action의 `spec`에는 `service`, `method`, `path`를 직접 명시합니다.
-`service`는 `name`과 `baseUrl`을 모두 포함하므로 다른 파일을 열지 않아도 대상 서비스를 알 수 있습니다.
-호출 URL은 `service.baseUrl + path`입니다. `endpoint: members.get` 같은 ID 참조는 허용하지 않습니다.
+Action의 `spec.service`는 Server 이름을 참조하고, `method`와 `path`는 직접 명시합니다.
+서비스 주소는 참조한 `Server.spec.baseUrl`에서 가져오며 Action에 중복 작성하지 않습니다.
+호출 URL은 참조한 Server의 `baseUrl + Action.spec.path`입니다. `endpoint: members.get` 같은 ID 참조는 허용하지 않습니다.
 요청·응답 필드 설정은 Action에 두지 않습니다.
 여러 Action이 같은 API를 업무/권한 단위로 명시할 수 있습니다.
 실제 화면에서 어떻게 사용할지는 `Page.spec.actions[]`에 정의합니다.
 
-현재 `Server` 리소스가 API 제공 서비스의 등록 정의입니다. 직접 명세는 가독성을 위한 의도적인 중복이며
+현재 `Server` 리소스가 API 제공 서비스의 등록 정의입니다. method/path는 가독성을 위해 직접 작성하며
 검증 스크립트가 다음과 같이 불일치를 차단합니다.
 
 | Action 필드 | 대조 대상 | 검증 |
 | --- | --- | --- |
-| `service.name` | Server.metadata.name | 해당 서비스가 등록되어 있어야 함 |
-| `service.baseUrl` | Server.spec.baseUrl | 문자열이 정확히 같아야 함 |
+| `service` | Server.metadata.name | 참조한 서비스가 등록되어 있어야 함 |
 | `method` + `path` | 같은 Server의 Endpoint.method/path | 유효한 Endpoint 하나와 정확히 일치 |
 
 서비스명으로 범위를 제한한 후 method/path를 대조합니다. 다른 서비스의 동일 경로나 동일 base URL로 대신 매칭하지 않습니다.
@@ -80,11 +78,12 @@ URL, HTTP 메서드, path 대소문자, trailing slash를 임의 정규화하거
 같은 서비스의 중복 route는 먼저 거부하므로 매칭 결과가 모호해지지 않습니다.
 어떤 Page에도 연결되지 않은 Action도 전체 검증 대상입니다.
 
-검증 오류는 Action 파일과 문제 필드를 표시합니다. 예를 들어 서비스 주소 불일치는
-`spec.service.baseUrl mismatch`와 등록된 기대 주소를, 존재하지 않는 경로는
+검증 오류는 Action 파일과 문제 필드를 표시합니다. 예를 들어 미등록 서비스는
+`spec.service: unregistered service`와 서비스명을, 존재하지 않는 경로는
 `no registered Endpoint`와 서비스·method·path를 표시합니다.
 이는 등록 명세 간 일치 검증이며 실제 서버로 API 호출을 실행하지 않습니다.
-서비스 주소·Endpoint method/path를 바꾸면 관련 Action 직접 명세도 같은 PR에서 함께 수정해야 합니다.
+Endpoint method/path를 바꾸면 관련 Action 직접 명세도 같은 PR에서 함께 수정해야 합니다.
+서비스 주소는 Server에서만 변경하며, 참조한 모든 Page 사용 계약에 재계산되어 반영됩니다.
 Endpoint 이름만 바뀌고 서비스·method·path가 같다면 Action 수정 없이 새 이름으로 관계가 도출됩니다.
 
 ```yaml
@@ -216,7 +215,7 @@ Action만으로 페이지별 필드 제한을 결정할 수 없습니다. 페이
 1 MiB 초과 파일, `${...}`, manifest 누락/초과 파일, 경로 이탈과 symlink를 거부합니다.
 각 문서를 JSON Schema로 검사하고 전체 참조, route 중복, Action 직접 명세 대조, Page 순환, 사용 정의 중복과 Page override를 추가 검사합니다.
 snapshot의 `pageActionUsages`에는 Page/Action/Endpoint 식별자와 합성된 `effective` 계약이 들어갑니다.
-effective는 검증된 Action의 직접 service 정보와 method/path에 원본 Endpoint의 요청·응답 계약을 결합하고,
+effective는 참조한 Server에서 가져온 service 정보(`name`, `baseUrl`)와 Action의 method/path에 원본 Endpoint의 요청·응답 계약을 결합하고,
 parameter/body의 `source` 또는 `value`, 명시한 응답의 `fields`를 더한 결과입니다.
 응답 `schema`는 필터링 전 upstream 검증용 원본이며, 최종 선택 목록은 `fields`가 결정합니다.
 이 값은 파생 데이터로만 저장하며 원본 Endpoint나 다른 Page를 수정하지 않습니다.

@@ -126,13 +126,7 @@
     "action": {
       "type": "object", "additionalProperties": false, "required": ["service", "method", "path"],
       "properties": {
-        "service": {
-          "type": "object", "additionalProperties": false, "required": ["name", "baseUrl"],
-          "properties": {
-            "name": {"$ref": "#/$defs/name"},
-            "baseUrl": {"$ref": "#/$defs/baseUrl"}
-          }
-        },
+        "service": {"$ref": "#/$defs/name"},
         "method": {"$ref": "#/$defs/httpMethod"},
         "path": {"$ref": "#/$defs/endpointPath"}
       }

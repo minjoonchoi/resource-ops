@@ -187,14 +187,10 @@ def resolve_action_endpoint(action, resources, routes):
     name, spec = action["metadata"]["name"], action["spec"]
     location = f"catalog/actions/{name}.yaml (Action/{name})"
     service = spec["service"]
-    server = resources.get(("Server", service["name"]))
+    server = resources.get(("Server", service))
     require(server is not None,
-            f"{location}: spec.service.name: unregistered service {service['name']!r}")
-    expected_url = server["spec"]["baseUrl"]
-    require(service["baseUrl"] == expected_url,
-            f"{location}: spec.service.baseUrl mismatch with Server/{service['name']}: "
-            f"expected {expected_url!r}, got {service['baseUrl']!r}")
-    route = service["name"], spec["method"], spec["path"]
+            f"{location}: spec.service: unregistered service {service!r}")
+    route = service, spec["method"], spec["path"]
     endpoint = routes.get(route)
     if endpoint is None:
         shape = TEMPLATE.sub("{}", spec["path"])
@@ -203,12 +199,12 @@ def resolve_action_endpoint(action, resources, routes):
         if similar is not None:
             raise CatalogError(f"{location}: spec.path must exactly match {similar!r}, "
                                f"including path parameter names; got {spec['path']!r}")
-        raise CatalogError(f"{location}: no registered Endpoint for service {service['name']!r}: "
+        raise CatalogError(f"{location}: no registered Endpoint for service {service!r}: "
                            f"{spec['method']} {spec['path']}")
     return endpoint
 
 
-def resolve_page_action(page_name, usage, action, endpoint):
+def resolve_page_action(page_name, usage, action, endpoint, server):
     """Validate sparse overrides and resolve an independent Page/Action contract."""
     location = f"Page/{page_name}.actions[{usage['action']}]"
     overrides, contract = usage.get("overrides", {}), endpoint["spec"]
@@ -231,7 +227,7 @@ def resolve_page_action(page_name, usage, action, endpoint):
 
     effective = copy.deepcopy(contract)
     effective.pop("server")
-    effective["service"] = copy.deepcopy(action["spec"]["service"])
+    effective["service"] = {"name": server["metadata"]["name"], "baseUrl": server["spec"]["baseUrl"]}
     for parameter in effective["request"]["parameters"]:
         binding = changed.get(parameter_key(parameter), {"source": "input"})
         # Preserve Endpoint names, types and required flags; only the value source changes.
@@ -331,7 +327,8 @@ def build_snapshot(root: Path):
             for usage in resource["spec"]["actions"]:
                 action = resources["Action", usage["action"]]
                 endpoint = action_endpoints[usage["action"]]
-                page_action_usages.append(resolve_page_action(name, usage, action, endpoint))
+                page_action_usages.append(resolve_page_action(
+                    name, usage, action, endpoint, resources["Server", action["spec"]["service"]]))
             visited, current = set(), name
             while current is not None:
                 require(current not in visited, f"Page/{name}: parent cycle through {current}")

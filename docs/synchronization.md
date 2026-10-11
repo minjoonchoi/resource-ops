@@ -51,9 +51,9 @@ DB drift 확인 없이 `sourceRevision` 또는 hash가 같다는 이유만으로
 
 Page의 Action 사용 정의가 override의 원본입니다. `uses.overrides`와 `pageActionUsages`는
 거기서 도출한 데이터이며 별도의 편집 원본으로 사용하지 않습니다.
-Action 원본에는 서비스명·base URL·HTTP method/path를 그대로 저장하고, 요청/응답 필드 설정은 Page 사용 정의에 저장합니다.
+Action 원본에는 서비스명 참조·HTTP method/path를 그대로 저장하고, 요청/응답 필드 설정은 Page 사용 정의에 저장합니다.
 Action 입력에 Endpoint ID는 없으며 등록 정의와 일치함을 확인한 뒤 DB 연결 identity를 도출합니다.
-`pageActionUsages.endpoint`는 대조 결과의 Endpoint 이름이고, effective에는 직접 service 정보도 포함합니다.
+`pageActionUsages.endpoint`는 대조 결과의 Endpoint 이름이고, effective에는 참조한 Server에서 가져온 service 정보(`name`, `baseUrl`)도 포함합니다.
 DB 적재 편의를 위한 관계/FK와 작성자가 입력한 직접 명세를 구분해서 보존합니다.
 사용 계약의 key는 `(sourceId, catalogName, page, action)`입니다.
 Server·Endpoint·Action 직접 명세가 변경되면 일치 여부를 다시 검증하고 연결된 모든 Page의 effective를 다시 계산합니다.
@@ -123,7 +123,7 @@ force push나 DB 수동 수정 없이 Git 이력과 적용 이력을 연결합�
 ## 소비자 완료 기준
 
 - 동일 SHA 전체 조회, 실패 시 무변경, 같은 commit 재시도, DB drift 복구를 통합 검증합니다.
-- 서비스 미등록, base URL 불일치, method/path 오타가 snapshot/DB 반영 전에 차단되는지 검증합니다.
+- 서비스 미등록, Server의 잘못된 base URL, method/path 오타가 snapshot/DB 반영 전에 차단되는지 검증합니다.
 - 연결 제거와 리소스 비활성화의 원자성, 외부 참조 차단, 두 worker의 경합을 검증합니다.
 - Page별 상속·subject 주입·응답 projection은 DB 적재와 별개로 실행 서버에서 검증합니다.
 - 같은 Action의 Page별 override가 섞이지 않는지, 변경하지 않은 요청/응답을 상속하는지 검증합니다.
