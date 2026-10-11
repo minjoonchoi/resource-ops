@@ -25,15 +25,15 @@ class VersionTests(Fixture):
         self.assertEqual(self.read('services/compat-api.yaml')['spec']['openapi'], document)
         return document
 
-    def add_usage(self, method='GET', path='/records/{id}', overrides=None):
+    def add_usage(self, method='GET', path='/records/{id}', rules=None):
         self.write('actions/compat.read.yaml', {
-            'apiVersion': 'resource-ops/v1', 'kind': 'Action',
+            'api-version': 'resource-ops/v1', 'kind': 'Action',
             'metadata': {'name': 'compat.read', 'title': 'Read record'},
             'spec': {'endpoint': {'service': 'compat-api', 'method': method, 'path': path}}})
         usage = {'action': 'compat.read'}
-        if overrides:
-            usage['overrides'] = overrides
-        self.write('pages/compat.yaml', {'apiVersion': 'resource-ops/v1', 'kind': 'Page',
+        if rules:
+            usage.update(rules)
+        self.write('pages/compat.yaml', {'api-version': 'resource-ops/v1', 'kind': 'Page',
                    'metadata': {'name': 'compat', 'title': 'Records'},
                    'spec': {'path': '/compat', 'actions': [usage]}})
         generate(self.root, target='compat-team/compat-api')
@@ -43,8 +43,8 @@ class VersionTests(Fixture):
         for version in VERSIONS:
             with self.subTest(version=version):
                 self.import_version(version)
-                effective = self.add_usage(overrides={'responses': {'200': {'fields': ['/id']}}})
-                self.assertEqual(effective['responses']['200']['fields'], ['/id'])
+                effective = self.add_usage(rules={'response': {'fields': {'id': True}}})
+                self.assertEqual(effective['response']['fields'], {'id': True})
                 before = (self.root / 'services/compat-api.yaml').read_bytes()
                 generate(self.root, 'check', 'compat-team/compat-api')
                 generate(self.root, 'create-missing', 'compat-team/compat-api')
@@ -113,7 +113,7 @@ class VersionTests(Fixture):
         effective = self.add_usage()
         self.assertEqual(set(effective['responses']['200']['content']), {'application/xml'})
         self.assertEqual(effective['service']['servers'], [{'url': '/api'}])
-        self.assertIsNone(effective['service']['swaggerServer']['host'])
+        self.assertIsNone(effective['service']['swagger-server']['host'])
 
     def test_swagger_missing_mime_types_does_not_assume_json(self):
         d = self.import_version('2.0')
@@ -146,9 +146,9 @@ class VersionTests(Fixture):
     def test_32_custom_method_case_sensitive_matching_and_identity(self):
         self.import_version('3.2.1')
         upper = self.add_usage('COPY', '/search')
-        upper_id = next(u['endpoint'] for u in build_snapshot(self.root)['pageActionUsages'] if u['page'] == 'compat')
+        upper_id = next(u['endpoint'] for u in build_snapshot(self.root)['page-action-usages'] if u['page'] == 'compat')
         lower = self.add_usage('copy', '/search')
-        lower_id = next(u['endpoint'] for u in build_snapshot(self.root)['pageActionUsages'] if u['page'] == 'compat')
+        lower_id = next(u['endpoint'] for u in build_snapshot(self.root)['page-action-usages'] if u['page'] == 'compat')
         self.assertEqual(upper['method'], 'COPY')
         self.assertEqual(lower['method'], 'copy')
         self.assertNotEqual(upper_id, lower_id)

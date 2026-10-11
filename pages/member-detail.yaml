@@ -1,4 +1,4 @@
-apiVersion: resource-ops/v1
+api-version: resource-ops/v1
 kind: Page
 metadata:
   name: member-detail
@@ -7,13 +7,15 @@ spec:
   path: /members/:memberId
   parent: members
   actions:
-    - action: members.detail.read
-      overrides:
-        responses:
-          "200":
-            fields: [/id, /nickname, /organizationCode]
-    - action: members.contact.read
-      overrides:
-        responses:
-          "200":
-            fields: [/id, /email]
+  - action: members.detail.read
+    response:
+      fields:
+        id: true
+        nickname: true
+        organizationCode: true
+  - action: members.contact.read
+    response:
+      fields:
+        id: true
+        email:
+          mask: email

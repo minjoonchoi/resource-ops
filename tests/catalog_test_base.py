@@ -53,7 +53,7 @@ class Fixture(unittest.TestCase):
         self.change(f'pages/{page}.yaml', lambda d: edit(next(u for u in d['spec']['actions'] if u['action'] == action)))
 
     def effective(self, snapshot, page='members', action='members.detail.read'):
-        return next(u['effective'] for u in snapshot['pageActionUsages'] if u['page'] == page and u['action'] == action)
+        return next(u['effective'] for u in snapshot['page-action-usages'] if u['page'] == page and u['action'] == action)
 
     def invalid(self, message):
         with self.assertRaisesRegex(CatalogError, message):

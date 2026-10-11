@@ -1,4 +1,4 @@
-apiVersion: resource-ops/v1
+api-version: resource-ops/v1
 kind: Action
 metadata:
   name: members.contact.read

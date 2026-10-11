@@ -21,7 +21,7 @@ class ActionPluginTests(Fixture):
         self.change(ACTION, lambda d: d['spec'].update(plugins=plugins))
 
     def usages(self, snapshot):
-        return [u for u in snapshot['pageActionUsages'] if u['action'] == 'members.detail.read']
+        return [u for u in snapshot['page-action-usages'] if u['action'] == 'members.detail.read']
 
     def test_plugins_are_optional_and_omission_normalizes_to_empty_array(self):
         for plugins in (None, [confirm_plugin()], [history_plugin()]):
@@ -41,7 +41,7 @@ class ActionPluginTests(Fixture):
                       and r['metadata']['name'] == 'members.detail.read')
         self.assertEqual(action['spec']['plugins'], plugins)
         self.assertEqual(snapshot['relations'], before['relations'])
-        self.assertNotEqual(snapshot['contentSha256'], before['contentSha256'])
+        self.assertNotEqual(snapshot['content-sha256'], before['content-sha256'])
         usages = self.usages(snapshot)
         for usage, previous in zip(usages, self.usages(before)):
             self.assertEqual(usage['plugins'], plugins)
@@ -84,11 +84,11 @@ class ActionPluginTests(Fixture):
             build_snapshot(self.root)
 
     def test_page_cannot_override_or_disable_plugins(self):
-        for placement in ('usage', 'overrides'):
+        for placement in ('usage', 'response'):
             with self.subTest(placement=placement):
                 original = self.read('pages/members.yaml')
                 self.change_usage('members', 'members.detail.read', lambda u:
-                                  (u if placement == 'usage' else u['overrides']).update(plugins={}))
+                                  (u if placement == 'usage' else u['response']).update(plugins={}))
                 self.invalid('Additional properties')
                 self.write('pages/members.yaml', original)
 
@@ -192,11 +192,11 @@ class ActionPluginTests(Fixture):
             self.change_usage(page, 'members.detail.read', lambda u: u.update(action=renamed))
         generate(self.root)
         snapshot = build_snapshot(self.root)
-        usages = [u for u in snapshot['pageActionUsages'] if u['action'] == renamed]
+        usages = [u for u in snapshot['page-action-usages'] if u['action'] == renamed]
         self.assertEqual(len(usages), 2)
         for usage in usages:
             self.assertEqual(usage['plugins'], [history_plugin()])
-        contact = next(u for u in snapshot['pageActionUsages'] if u['action'] == 'members.contact.read')
+        contact = next(u for u in snapshot['page-action-usages'] if u['action'] == 'members.contact.read')
         self.assertEqual(contact['endpoint'], usages[0]['endpoint'])
         self.assertNotEqual(contact['action'], usages[0]['action'])
         self.assertFalse(any(r['kind'] == 'Action' and r['metadata']['name'] == 'members.detail.read'

@@ -4,15 +4,12 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "apiVersion",
+    "api-version",
     "kind",
     "metadata",
     "spec"
   ],
   "properties": {
-    "apiVersion": {
-      "const": "resource-ops/v1"
-    },
     "kind": {
       "enum": [
         "Service",
@@ -25,6 +22,9 @@
     },
     "spec": {
       "type": "object"
+    },
+    "api-version": {
+      "const": "resource-ops/v1"
     }
   },
   "allOf": [
@@ -122,48 +122,6 @@
         }
       }
     },
-    "parameterOverride": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "in",
-        "name"
-      ],
-      "properties": {
-        "in": {
-          "enum": [
-            "path",
-            "query",
-            "header",
-            "cookie"
-          ]
-        },
-        "name": {
-          "$ref": "#/$defs/text"
-        },
-        "source": {
-          "enum": [
-            "subject.id",
-            "subject.email",
-            "subject.nickname",
-            "subject.organization.code"
-          ]
-        },
-        "value": {}
-      },
-      "oneOf": [
-        {
-          "required": [
-            "source"
-          ]
-        },
-        {
-          "required": [
-            "value"
-          ]
-        }
-      ]
-    },
     "action": {
       "type": "object",
       "additionalProperties": false,
@@ -182,66 +140,33 @@
     "pageAction": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "action"
-      ],
       "properties": {
         "action": {
           "$ref": "#/$defs/name"
         },
-        "overrides": {
-          "$ref": "#/$defs/endpointOverrides"
-        }
-      }
-    },
-    "endpointOverrides": {
-      "description": "Sparse changes for one Page/Action usage. Omitted values inherit the Endpoint contract.",
-      "type": "object",
-      "additionalProperties": false,
-      "minProperties": 1,
-      "properties": {
         "request": {
+          "$ref": "#/$defs/page-request"
+        },
+        "response": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "parameters"
-          ],
           "properties": {
-            "parameters": {
-              "type": "array",
-              "minItems": 1,
-              "items": {
-                "$ref": "#/$defs/parameterOverride"
+            "fields": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {
+                "$ref": "#/$defs/response-tree"
               }
             }
-          }
-        },
-        "responses": {
-          "type": "object",
-          "minProperties": 1,
-          "propertyNames": {
-            "pattern": "^([1-5][0-9]{2}|[1-5]XX|default)$"
           },
-          "additionalProperties": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "fields"
-            ],
-            "properties": {
-              "fields": {
-                "type": "array",
-                "minItems": 1,
-                "uniqueItems": true,
-                "items": {
-                  "type": "string",
-                  "pattern": "^(|/.*)$"
-                }
-              }
-            }
-          }
+          "required": [
+            "fields"
+          ]
         }
-      }
+      },
+      "required": [
+        "action"
+      ]
     },
     "page": {
       "type": "object",
@@ -519,6 +444,111 @@
           }
         }
       }
+    },
+    "field-binding": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "source": {
+              "const": "subject"
+            },
+            "field": {
+              "enum": [
+                "id",
+                "nickname",
+                "email"
+              ]
+            }
+          },
+          "required": [
+            "source",
+            "field"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "source": {
+              "const": "scope"
+            },
+            "name": {
+              "$ref": "#/$defs/name"
+            }
+          },
+          "required": [
+            "source",
+            "name"
+          ]
+        }
+      ]
+    },
+    "request-tree": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/field-binding"
+        },
+        {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "$ref": "#/$defs/request-tree"
+          }
+        }
+      ]
+    },
+    "response-tree": {
+      "anyOf": [
+        {
+          "anyOf": [
+            {
+              "const": true
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "mask"
+              ],
+              "properties": {
+                "mask": {
+                  "$ref": "#/$defs/name"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "$ref": "#/$defs/response-tree"
+          }
+        }
+      ]
+    },
+    "page-request": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "$ref": "#/$defs/request-tree"
+          }
+        },
+        "body": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "$ref": "#/$defs/request-tree"
+          }
+        }
+      },
+      "minProperties": 1
     }
   }
 }

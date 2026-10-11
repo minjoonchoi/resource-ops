@@ -36,7 +36,7 @@ plain-text 파일은 `${...}` 치환과 profile별 파일 선택이 일어날 �
 ## 조회 절차
 
 1. 정상 인증된 Config Server에서 Environment 응답을 읽습니다.
-2. `version`이 유효한 전체 Git SHA인지 확인하고 해당 동기화 시도의 `sourceRevision`으로 확정합니다.
+2. `version`이 유효한 전체 Git SHA인지 확인하고 해당 동기화 시도의 `source-revision`으로 확정합니다.
 3. 같은 SHA의 Git checkout 또는 Git 트리 API로 services/actions/pages 아래의 전체 YAML 경로를 탐색합니다.
    기본 plain-text API는 개별 파일 조회용이므로 파일 목록은 동기화 서버가 Git에서 구합니다.
    트리 API의 pagination/truncated 여부를 확인하여 완전한 목록임을 보장합니다.
@@ -75,13 +75,13 @@ Service YAML 자체가 원본 OpenAPI를 포함하므로 Config Server 소비자
 
 ## 연결 시 확인할 항목
 
-- `resource-catalog/default/master`에서 `version`과 `resourceOps.apiVersion` marker를 확인합니다.
+- `resource-catalog/default/master`에서 `version`과 `resource-ops.api-version` marker를 확인합니다.
 - 같은 SHA의 Git 트리에서 찾은 YAML 파일 6개를 읽어 리소스 8개와 참조 10개가 만들어지는지 확인합니다.
 - Action의 서비스 참조를 확인하고 직접 작성한 method·path를 등록 정의와 대조해 일치하는 Endpoint 연결을 도출하는지 확인합니다.
-- Page별 사용 계약 4개를 도출하고 동일 Action의 override가 각 Page에 독립적으로 적용되는지 확인합니다.
+- Page별 사용 계약 4개를 도출하고 동일 Action의 요청/응답 규칙가 각 Page에 독립적으로 적용되는지 확인합니다.
 - master가 변경되어도 이전 SHA 조회 결과가 그대로 유지되는지 확인합니다.
 - 존재하지 않는 파일·label, 잘못된 YAML, 네트워크 장애가 DB 변경으로 이어지지 않는지 확인합니다.
-- consumer는 지원하는 `apiVersion`의 스키마/검증기를 배포에 포함하고 알 수 없는 버전은 거부합니다.
+- consumer는 지원하는 `api-version`의 스키마/검증기를 배포에 포함하고 알 수 없는 버전은 거부합니다.
   저장소가 제공하는 새 스키마를 자동 실행하거나 알 수 없는 규격을 동적으로 수용하지 않습니다.
 
 위 항목은 실제 Config Server와 동기화 서버 연결 시 수행할 통합 검증입니다.

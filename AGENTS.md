@@ -33,7 +33,7 @@ Service.spec에는 endpoints/openapi만 두며 source는 metadata.organization/n
 선택 인자 없는 실행을 전체 변환으로 간주하지 않는다. 원본 삭제 후 생성물 정리도 명시적인 전체 유지보수 작업이다.
 서비스 참조가 필요한 Action은 생성 YAML의 Service.metadata.name과 method/path를 확인하여
 `spec.endpoint.service/method/path`에 작성한다. 플러그인은 `spec.plugins` 단일 배열에
-연결하며 요청/응답 계약 변경은 계속 Page의 overrides에 둔다. confirm에는 config.pool(users 닉네임 / organizations 조직 식별자),
+연결하며 Page에는 actions[].request/response를 직접 둔다. overrides나 200 depth를 추가하지 않는다. confirm에는 config.pool(users 닉네임 / organizations 조직 식별자),
 count, execution(requester/automatic)을 반드시 작성하고 대상·확인 수를 추측하여 채우지 않는다.
 history는 events 선택 없이 해당 Action의 전체 이력을 기록한다. 선택적인 config.request/responses는
 실제 실행 요청/응답에서 이력에 저장할 값만 선택하며, 호출 계약이나 Page 응답 필드를 변경하지 않는다.
@@ -53,7 +53,7 @@ Action/Page 정의는 별도 요청 없이 생성기에서 자동 생성하거�
 3. 검증 라이브러리의 공식 문서와 설치된 버전의 구현을 확인하고 적합한 **버전별 검증기**를 선택한다.
    알려지지 않은 major/minor를 기존 검증기에 무조건 통과시키지 않는다.
 4. 원본 JSON은 그대로 보존한다. 필요한 차이는 생성기/카탈로그 adapter에 구현한다.
-   Page override 지원 범위와 원본 가져오기 지원 범위를 구분하며, 해석할 수 없는 기능을 조용히 버리지 않는다.
+   Page 요청/응답 규칙 지원 범위와 원본 가져오기 지원 범위를 구분하며, 해석할 수 없는 기능을 조용히 버리지 않는다.
 5. `tests/fixtures/openapi/`에 해당 버전의 최소 재현 예제를 추가하고
    `tests/test_openapi_versions.py`에 생성·원문 보존·Action 연결·Page 사용 검증을 추가한다.
    단일 대상 격리 동작은 `tests/test_target_conversion.py`로 검증한다.
@@ -75,3 +75,13 @@ Action/Page 정의는 별도 요청 없이 생성기에서 자동 생성하거�
 - `services/`만 생성물이며, `openapi/`, `actions/`, `pages/`는 사람이 관리하는 원본이다.
 - 생성기/CI 변경 시 기존 생성물 비교, 다른 서비스 격리, 버전별 계약 보존을 유지한다.
 - DB 연결/실행 서버 구현 여부와 카탈로그 변환·검증 완료를 구분해 보고한다.
+
+## YAML 키와 Page 규칙
+
+- 저장소 소유 설정 키는 kebab-case를 사용한다(api-version/resource-ops). 이전 camelCase 별칭을 추가하지 않는다.
+- 원본 OpenAPI/Swagger/JSON Schema 키, API 필드·파라미터 이름, GitHub Actions 등의 외부 문법은 변경하지 않는다.
+- Page request.query/body는 실제 필드 깊이로 작성한다. source: subject + field로 주입하고 source: scope + name으로 입력을 검증한다.
+- Page response.fields는 중첩 화이트리스트다. 명시하지 않은 모든 필드는 drop하며 true는 원래 값, mask는 등록 규칙 이름이다.
+- 배열 여부는 OpenAPI에서 확인한다. 객체 전체 true, flat 경로, false/빈 fields를 허용하지 않는다.
+- response는 실제 HTTP 200에만 적용한다. response 생략은 원본 사용이며 fields가 있으면 원본 필드를 자동 추가하지 않는다.
+- scope/mask의 외부 등록 및 실제 실행 로직과 이 저장소의 정적 검증·snapshot 보존을 구분한다.

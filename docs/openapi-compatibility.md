@@ -39,7 +39,7 @@
 - consumes/produces는 operation 설정을 우선하고, 없으면 문서 값을 상속합니다.
   둘 다 없을 때 `*/*`로 미지정임을 나타내며 JSON이라고 가정하지 않습니다.
 - host와 schemes가 있으면 서버 URL을 구성합니다. 없으면 상대/프로토콜 상대 URL과
-  `swaggerServer`의 원래 host/basePath/schemes를 함께 보존합니다. 실행 설정에서 기준 URL을 제공해야 합니다.
+  `swagger-server`의 원래 host/basePath/schemes를 함께 보존합니다. 실행 설정에서 기준 URL을 제공해야 합니다.
 - 2.0 response schema·headers·examples를 유지하면서 content 표현을 추가합니다.
   실제 form serialization과 인증 적용은 소비자 구현 책임입니다.
 
@@ -52,9 +52,9 @@ null과 수치 범위는 해당 버전의 값 검증기로 검사합니다. 3.1/
 그대로 사용하므로 `COPY`와 `copy`는 서로 다릅니다. Action에서도 대소문자를 그대로 작성해야 합니다.
 표준/확장 메서드 모두 Endpoint 이름은 `<service>.<method>.<원본 path>`이며 경로와 메서드 토큰을 보존합니다.
 querystring의 content와 스트리밍 itemSchema 등 새 필드는 원문·사용 계약에 보존합니다.
-응답 명세가 생략된 operation도 등록하며 Page가 없는 응답을 override하려 하면 검증에서 실패합니다.
+응답 명세가 생략된 operation도 등록하며 Page가 HTTP 200에 대응하는 응답 계약 없이 fields를 지정하면 검증에서 실패합니다.
 
-## 가져오기와 Page override의 경계
+## 가져오기와 Page 규칙의 경계
 
 버전 지원이 모든 실행 기능의 구현을 의미하지는 않습니다. 다음 제한은 버전 판별 오류와 구분합니다.
 
@@ -62,7 +62,10 @@ querystring의 content와 스트리밍 itemSchema 등 새 필드는 원문·사�
 - 하나 이상의 `paths` operation이 있는 서비스 카탈로그를 대상으로 합니다. callbacks/webhooks는 원문에 보존하지만 별도 Endpoint로 등록하지 않습니다.
 - Page의 field projection은 단일 JSON media type의 명확한 leaf schema를 대상으로 합니다.
   여러 media type, 복합·boolean schema, 제약 sibling을 가진 ref, 스트리밍 itemSchema의 projection은 추측하지 않습니다.
-- parameter 주입은 schema 방식만 지원합니다. querystring/content parameter·form 내부 필드의 주입은 별도 확장이 필요합니다.
+- Page query 주입/검증은 schema 방식, body 주입/검증은 단일 JSON content를 지원합니다.
+  querystring/content parameter·form 내부 필드 규칙은 별도 확장이 필요합니다.
+- Page는 실제 depth로 작성하고 배열은 items에서 판별합니다. HTTP 200 계약은 200 → 2XX → default 순서로 찾지만 규칙은 200에만 적용합니다.
+- 소유 키의 kebab-case 전환은 OpenAPI 원문 필드 이름을 변경하지 않습니다. 버전별 query/body 주입·scope binding·응답 mask 참조 보존을 회귀 검증합니다.
 - 전체 계약은 원문에 보존됩니다. Config Server에서 내용 치환을 막기 위한 placeholder 제한 등은 [카탈로그 규격](catalog-model.md)을 따릅니다.
 
 ## 버전 확인·확장 절차

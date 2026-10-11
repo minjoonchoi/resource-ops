@@ -1,4 +1,4 @@
-apiVersion: resource-ops/v1
+api-version: resource-ops/v1
 kind: Page
 metadata:
   name: members
@@ -6,21 +6,20 @@ metadata:
 spec:
   path: /members
   actions:
-    - action: members.directory.list
-      overrides:
-        request:
-          parameters:
-            - in: query
-              name: organizationCode
-              source: subject.organization.code
-            - in: query
-              name: size
-              value: 20
-        responses:
-          "200":
-            fields: [/items/*/id, /items/*/nickname, /total]
-    - action: members.detail.read
-      overrides:
-        responses:
-          "200":
-            fields: [/id, /nickname]
+  - action: members.directory.list
+    request:
+      query:
+        organizationCode:
+          source: scope
+          name: organization-codes
+    response:
+      fields:
+        items:
+          id: true
+          nickname: true
+        total: true
+  - action: members.detail.read
+    response:
+      fields:
+        id: true
+        nickname: true

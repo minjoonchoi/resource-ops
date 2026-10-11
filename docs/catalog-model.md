@@ -13,6 +13,15 @@ JSON 파일명에서 `.json`만 제거한 값을 Service의 `metadata.name`으�
 조직 디렉터리 이동은 조직 정보 갱신, JSON 파일명 변경은 서비스 identity 변경으로 취급합니다.
 서비스명 변경 시 관련 Action의 service 참조도 변경해야 합니다.
 
+## 키 표기
+
+저장소가 소유하는 YAML 설정 키는 kebab-case입니다. 예: `api-version`, `resource-ops`.
+스키마는 이전 camelCase 별칭을 허용하지 않습니다. snapshot의 소유 키도 `page-action-usages`,
+`content-sha256`처럼 맞춥니다. `kind`의 Service/Action/Page 값과 참조 식별자는 키가 아닙니다.
+OpenAPI/Swagger/JSON Schema 표준 키와 실제 API 필드·파라미터 이름은 원문 그대로 유지합니다.
+`requestBody`, `operationId`, `organizationCode`, `user_email` 등을 바꾸면 외부 계약이 깨집니다.
+GitHub Actions 등 외부 도구 설정 키도 해당 도구의 문법을 따릅니다.
+
 ## Service와 Endpoint
 
 하나의 생성 YAML에는 Service 문서 하나가 들어갑니다. spec에는 endpoints와 openapi만 저장합니다.
@@ -77,7 +86,7 @@ snapshot에서 adapter로 합성하며 세부 규칙은 [버전 호환성 문서
 개발조직은 생성된 YAML을 확인한 뒤 `actions/<metadata.name>.yaml`을 직접 작성합니다.
 
 ```yaml
-apiVersion: resource-ops/v1
+api-version: resource-ops/v1
 kind: Action
 metadata:
   name: members.contact.read
@@ -181,7 +190,7 @@ metadata.name에 대응하는 식별자입니다. 이 저장소에는 사용자/
 실행 서버가 따라야 할 단계 계약은 다음과 같습니다.
 
 1. history가 연결되었으면 Action 시작 시 이력 수집을 준비합니다.
-   Action 권한과 입력을 검증하고 Page 사용 맥락의 override를 적용합니다.
+   Action 권한과 입력을 검증하고 Page 사용 맥락의 요청 처리 규칙을 적용합니다.
 2. confirm이 연결되었으면 count명의 유효 확인이 모일 때까지 대기합니다.
    requester 방식은 충족 후 요청자의 실행 명령을 기다리고 automatic 방식은 충족 시 자동 실행합니다.
    조건 미충족·요청 취소·오류 상태에서는 endpoint를 호출하지 않습니다. 확인 UI는 플러그인 구현에서 결정합니다.
@@ -192,15 +201,15 @@ metadata.name에 대응하는 식별자입니다. 이 저장소에는 사용자/
 
 위 내용은 실행 소비자 계약이며 이 저장소의 스크립트는 확인 UI, API 호출, DB 이력 저장을 실행하지 않습니다.
 confirm.config의 구조/정적 조건과 history.config.request/responses의 구조 및 OpenAPI 필드 존재 여부를 검증합니다.
-history의 events/actionName/groupBy 등 별도 범위/분류 설정은 거부합니다.
+history의 events/action-name/group-by 등 별도 범위/분류 설정은 거부합니다.
 외부 대상의 존재/소속과 플러그인별 실행 지원 여부는 실행 서버가
 업무 호출 전에 검사해야 하며, 지원하지 않는 플러그인을 무시하고 endpoint를 호출하면 안 됩니다.
 이력의 저장소·보존 기간과 확인 UI는 플러그인 구현 계약에서 정의합니다. 이력의 공통 필드는 아래 계약을 따릅니다.
 요청/응답 값은 history.config에 명시한 필드만 저장하며 호출 계약의 필드 변경은 하지 않습니다.
 
-플러그인 구성은 Action에 속하므로 모든 Page 사용에 동일하게 적용됩니다. Page overrides로 플러그인을
+플러그인 구성은 Action에 속하므로 모든 Page 사용에 동일하게 적용됩니다. Page 규칙으로 플러그인을
 제거·변경할 수 없습니다. Page 밖에서 Action을 실행하는 경우에도 Action.spec.plugins를 적용합니다.
-`resources`의 Action 원본과 `pageActionUsages.plugins`에 단일 배열을 그대로 보존하고 plugins 생략은 사용 계약에서 빈 배열로 정규화합니다. `pageActionUsages.effective`는 기존처럼 엔드포인트의 요청/응답 계약입니다.
+`resources`의 Action 원본과 `page-action-usages.plugins`에 단일 배열을 그대로 보존하고 plugins 생략은 사용 계약에서 빈 배열로 정규화합니다. `page-action-usages.effective`는 원본 계약과 Page 요청/응답 규칙을 함께 보존합니다.
 
 ### History 요청/응답 값 선택
 
@@ -241,7 +250,7 @@ plugins:
   명확히 검증할 수 없어 거부합니다. 원본 OpenAPI 자체의 보존/가져오기 범위는 달라지지 않습니다.
 - Page에서 사용하지 않는 Action도 검증합니다. 전체 로컬 검증과 --from-generated 소비자 검증에 동일하게 적용합니다.
 
-실행 서버는 **Page 주입/고정값 적용 후 실제로 보낸 최종 요청 값**을 기록합니다. confirm 입력이나
+실행 서버는 **Page subject 주입과 scope 검증 후 실제로 보낸 최종 요청 값**을 기록합니다. confirm 입력이나
 OpenAPI example/default를 실제 실행값으로 대신 저장하지 않습니다. 응답은 Page fields로 화면에 반환할
 필드를 줄이기 전의 endpoint 응답에서 선택합니다. 따라서 Page에 노출하지 않는 필드도 명시적으로
 history에 선택할 수 있으며, 저장된 이력의 조회 권한은 실행 서버가 따로 적용해야 합니다.
@@ -253,7 +262,7 @@ history에 선택할 수 있으며, 저장된 이력의 조회 권한은 실행 
 응답이 없거나 JSON 파싱/추출에 실패하면 결과·오류 상태를 기록하며 원문 전체 저장으로 대체하지 않습니다.
 endpoint 미실행 시 실제 요청/응답 값을 만들지 않습니다. 네트워크 전송을 시도한 뒤 실패한 경우에는
 확인 가능한 실제 요청 값과 실패 결과를 기록합니다.
-선택한 요청 값은 호출 시작 이력, 응답 값은 해당 호출 결과 이력의 details에 붙이고 executionId로 연결합니다.
+선택한 요청 값은 호출 시작 이력, 응답 값은 해당 호출 결과 이력의 details에 붙이고 execution-id로 연결합니다.
 실제 값 추출/DB 저장은 실행 서버 구현 범위이며 이 저장소는 설정과 계약 검증을 제공합니다.
 
 ### History 수집 및 저장 계약
@@ -282,35 +291,36 @@ confirm 이력과 endpoint.skipped(사유 포함)를 남기며 호출 시작/성
 
 | 필드 | 저장 값 |
 | --- | --- |
-| `actionName` | 해당 Action.metadata.name. YAML 설정에 별도 키로 중복 작성하지 않음 |
-| `executionId` | 하나의 업무 실행 요청 ID. 동일 Action의 반복 실행/동시 요청을 구분 |
-| `eventId`, `sequence`, `occurredAt` | 중복 저장 방지 키, 실행 요청 내 순서, 발생 시각 |
+| `action-name` | 해당 Action.metadata.name. YAML 설정에 별도 키로 중복 작성하지 않음 |
+| `execution-id` | 하나의 업무 실행 요청 ID. 동일 Action의 반복 실행/동시 요청을 구분 |
+| `event-id`, `sequence`, `occurred-at` | 중복 저장 방지 키, 실행 요청 내 순서, 발생 시각 |
 | `event` | confirm.approved, endpoint.started 등 실제 발생한 행위/전이 |
 | `actor` | 실제 행위자의 종류(user/system), 안정적인 ID, 당시 사용자 닉네임(사용자일 때) |
 | `requester` | 원래 요청자의 안정적인 ID와 요청 당시 닉네임 |
 | `result`, `reason` | 행위 결과와 거절·오류·호출 생략 사유(해당할 때) |
-| `catalogRevision`, `page` | 요청에 고정한 카탈로그 revision과 Page 맥락(있을 때) |
+| `catalog-revision`, `page` | 요청에 고정한 카탈로그 revision과 Page 맥락(있을 때) |
 | `details` | confirm의 현재 확인 수/count 또는 endpoint의 service/method/path·실행 방식·HTTP 상태 등 |
 
-Action.metadata.name은 조회/분류 기준이고 executionId는 개별 실행의 연결 기준입니다.
+Action.metadata.name은 조회/분류 기준이고 execution-id는 개별 실행의 연결 기준입니다.
 닉네임 변경 후에도 누가 수행했는지 추적할 수 있도록 사용자 ID와 당시 닉네임을 함께 저장합니다.
 시스템이 만든 자동 실행·상태 전이는 시스템 행위자와 원래 요청자를 모두 남깁니다.
 이벤트를 처리할 때의 새 Action 이름으로 과거 이력을 덮어쓰지 않고 요청에 고정한 이름/revision을 유지합니다.
 
-snapshot의 Action.metadata.name 또는 pageActionUsages.action이 history의 actionName 바인딩입니다.
-플러그인 설정에서 다른 actionName/groupBy를 지정하는 것은 거부합니다. Page 밖 실행도 Action 원본의
+snapshot의 Action.metadata.name 또는 page-action-usages.action이 history의 action-name 바인딩입니다.
+플러그인 설정에서 다른 action-name/group-by를 지정하는 것은 거부합니다. Page 밖 실행도 Action 원본의
 metadata.name과 plugins를 사용합니다. 실제 이력 이벤트는 카탈로그 snapshot에 포함하지 않습니다.
 
-중복 이벤트 재처리는 eventId로 멱등 저장하고, 이력 저장 실패는 내구성 큐/outbox 등으로 복구해야 합니다.
+중복 이벤트 재처리는 event-id로 멱등 저장하고, 이력 저장 실패는 내구성 큐/outbox 등으로 복구해야 합니다.
 이력 복구 때문에 endpoint를 다시 실행하지 않습니다. 저장소/실행 서버는 이 저장소에서 구현하지 않습니다.
 
-## Page의 sparse override
+## Page의 요청 처리와 응답 노출
 
-`pages/<metadata.name>.yaml`의 `spec.actions[]`에는 Action 참조와 필요한 변경분만 작성합니다.
-`parent`는 상위 Page의 metadata.name 참조이며 순환을 허용하지 않습니다.
+`pages/<metadata.name>.yaml`의 `spec.actions[]`는 Action 참조와 선택적인 request/response 규칙을 직접 가집니다.
+`overrides`, 상태코드 depth, flat field 경로는 사용하지 않습니다. `parent`는 상위 Page의 metadata.name이며
+계층 관계만 표현합니다. 부모의 Action/규칙을 상속하지 않으며 순환을 허용하지 않습니다.
 
 ```yaml
-apiVersion: resource-ops/v1
+api-version: resource-ops/v1
 kind: Page
 metadata:
   name: members
@@ -319,41 +329,103 @@ spec:
   path: /members
   actions:
     - action: members.directory.list
-      overrides:
-        request:
-          parameters:
-            - in: query
-              name: organizationCode
-              source: subject.organization.code
-            - in: query
-              name: size
-              value: 20
-        responses:
-          '200':
-            fields: [/items/*/id, /items/*/nickname, /total]
+      request:
+        query:
+          organizationCode:
+            source: scope
+            name: organization-codes
+      response:
+        fields:
+          items:
+            id: true
+            nickname: true
+            email:
+              mask: email
+          total: true
 ```
 
-- 생략한 요청·응답·상태코드는 원본 계약을 상속합니다. 빈 overrides/parameters/fields를 작성하지 않습니다.
-- 요청 parameter는 `(in, name)` 기준으로 `source` 또는 `value` 중 하나만 지정합니다.
-- `source`는 `subject.id`, `subject.email`, `subject.nickname`, `subject.organization.code`입니다.
-- 고정값은 OpenAPI 버전에 맞춰 원본 schema로 검증합니다. subject 값은 실행 시에도 제약을 검증해야 합니다.
-- override하지 않은 parameter와 requestBody는 호출자 입력을 사용합니다. YAML에 `source: input`을 반복하지 않습니다.
-- 원본 required, serialization, type, enum, range 등 계약은 그대로 유지합니다. method/path/schema를 Page에서 바꾸지 않습니다.
-- 원본 `schema` parameter에 대한 주입만 지원합니다. `content` parameter 주입 및 전송/인증 header override는 거부합니다.
-- 응답 `fields`는 해당 상태코드의 선택 목록 전체를 교체합니다. 지정하지 않은 오류 응답은 원본 전체를 상속합니다.
-- HTTP 코드, 범위 코드(`2XX` 등), `default`를 원본 키 그대로 사용할 수 있습니다. 상태코드는 YAML 문자열로 작성합니다.
+### 요청 주입·scope 검증
 
-응답 선택은 정확히 하나의 `application/json` 또는 `application/*+json` media type에 schema가 있을 때 지원합니다.
-필드는 JSON Pointer escaping(`~1`: `/`, `~0`: `~`)을 사용하며 array의 요소만 `*`로 선택합니다.
-`/items/*/id`는 모든 배열 요소의 id입니다. object/array 전체 대신 개별 leaf를 선택합니다.
-정적인 properties/items와 내부 `$ref`를 따라가며 nullable scalar를 지원합니다.
-`allOf`/`oneOf`/`anyOf` 등 복합 스키마, boolean/untyped schema, 제약 sibling을 가진 3.1/3.2 `$ref`에 대한
-projection은 안전하게 결론 낼 수 없어 거부합니다. 원본 보존이나 override 없는 상속은 가능합니다.
+query의 키는 실제 파라미터명이고, body는 실제 객체 깊이대로 작성합니다.
+다음은 해당 query/body 필드를 가진 API를 사용하는 Action의 형식 예시입니다.
 
-실행 서버는 Page·Action 권한과 `(Page, Action)` 사용 맥락을 확인하고 요청 입력/주입값을 검증한 뒤 호출합니다.
-upstream 응답을 OpenAPI 계약으로 검증한 후 fields를 적용하며 부모 구조·배열 순서·요소 수를 보존합니다.
-매칭되지 않은 응답이나 스키마 위반 응답은 일반 오류로 처리합니다. CLI는 API를 호출하지 않습니다.
-Action만으로 Page별 필드 제한을 결정할 수 없으므로 Page 밖 호출 정책은 별도 정의해야 합니다.
+```yaml
+request:
+  query:
+    nickname:
+      source: subject
+      field: nickname
+  body:
+    requester:
+      email:
+        source: subject
+        field: email
+    departmentCode:
+      source: scope
+      name: department-codes
+```
+
+- `source: subject`는 신뢰할 수 있는 인증 사용자 정보의 `field`(id/nickname/email)를 주입합니다.
+  UI가 같은 값을 보내도 주입값으로 대체하며 값 조회 실패 시 UI 입력으로 대체하지 않습니다.
+- `source: scope`는 사전 정의한 scope의 `name`을 참조하여 입력값이 허용 값에 속하는지 검증합니다.
+  scope 값 전체를 입력으로 주입하지 않습니다. 문자열/수치 등의 원본 타입을 보존하여 비교합니다.
+- scope 필드의 입력 누락, 알 수 없는 scope, 허용 값 조회 실패, 범위 밖 입력은 호출을 차단합니다.
+  빈 배열이나 null을 자동 허용으로 처리하지 않습니다. 요청자가 사용할 수 있는 scope 값으로 검증해야 합니다.
+- 타입·필수 여부·직렬화 등은 OpenAPI에 있으므로 Page에 다시 작성하지 않습니다.
+  주입 후 전체 요청의 OpenAPI 제약을 검증하고 scope 검사까지 성공한 뒤 endpoint를 호출합니다.
+- 미지정 필드는 호출자 입력을 사용합니다. request 생략도 같은 의미입니다.
+  기존 `parameters`, `value`, `source: subject.email` 형식은 허용하지 않습니다.
+- query/body 내 필드만 지원합니다. query는 schema 방식, body는 단일 JSON media type이어야 합니다.
+  content/querystring 파라미터, form/multipart body는 원문에 보존하지만 이 규칙으로 수정하지 않습니다.
+- 객체는 하위 필드에 규칙을 씁니다. 배열은 OpenAPI의 items를 따라 각 요소에 동일 규칙을 적용하며
+  숫자 index나 `*`를 YAML에 쓰지 않습니다. scope는 배열의 각 대상 값이 모두 허용되어야 통과합니다.
+  subject 값은 기존 배열 요소 각각에 주입하며 누락된 배열 요소를 임의 생성하지 않습니다.
+
+### HTTP 200 응답 화이트리스트·마스킹
+
+`response.fields`를 지정하면 **명시된 필드만 포함하고 나머지는 전부 drop**합니다.
+`true`는 해당 leaf의 원래 값, `{mask: email}`은 사전 등록한 email 규칙으로 마스킹한 값입니다.
+마스킹 필드도 화이트리스트에 포함되며 마스킹 실패 시 원문을 반환하지 않습니다.
+모르는 마스크 이름이나 적용 불가능한 타입은 실행 전에 차단해야 합니다.
+
+원본 응답에 새 필드가 추가되어도 자동 노출되지 않습니다. 객체의 계층, 배열 순서/개수를 유지하면서
+모든 깊이에 같은 화이트리스트를 적용합니다. 객체에 `true`를 지정해 하위 필드 전체를 노출할 수 없습니다.
+문자열 같은 scalar 배열에는 `true` 또는 mask를 지정할 수 있고 배열 여부는 OpenAPI로 판별합니다.
+필드명은 문자열 그대로 취급하므로 `mask`/`source`라는 실제 필드명도 충돌 없이 사용할 수 있습니다.
+
+예를 들어 위 fields에 대한 원본/노출 결과는 다음과 같습니다. email 규칙의 구체적인 가림 방식은
+실행 서버의 등록된 마스킹 구현을 따릅니다.
+
+```yaml
+# 원본
+items:
+  - id: u1
+    nickname: min
+    email: min@example.invalid
+    organizationCode: A
+    internal-note: private
+total: 1
+extra: private
+# 노출: items 내 미지정 필드와 루트의 extra는 제거
+# items: [{id: u1, nickname: min, email: '<마스킹된 값>'}]
+# total: 1
+```
+
+- 실제 HTTP **200**에만 적용합니다. `200` key는 Page에 작성하지 않습니다.
+- OpenAPI에서 200 계약은 정확한 `200` → `2XX` → `default` 순서로 찾습니다.
+  `2XX`/`default` 계약을 사용해 검증해도 실행 시 201/400 등의 응답에는 이 규칙을 적용하지 않습니다.
+- response 전체를 생략하면 별도 화이트리스트/마스킹 없이 원본 계약을 사용합니다.
+  `response: {}`나 빈 fields, false 값은 거부합니다. 필드를 제외하려면 목록에 작성하지 않습니다.
+- upstream 응답은 원본 OpenAPI로 검증한 후 화이트리스트와 마스킹을 적용합니다.
+  원본 required 필드도 Page 화이트리스트에서 생략할 수 있으므로 최종 출력에 원본 required를 다시 강제하지 않습니다.
+  누락된 선택 필드는 만들지 않고, 명시적 null은 schema가 허용한 경우 유지합니다.
+- 명확한 단일 JSON media type과 정적 properties/items 및 내부 ref를 지원합니다.
+  모호한 composition/boolean/untyped schema, 제약 sibling ref, tuple/순환 배열은 규칙 검증에서 거부합니다.
+
+scope 허용 값과 mask 구현은 실행 서버에 미리 등록합니다. 이 저장소는 이들의 이름과 OpenAPI 대상 필드를
+검증·보존하며 외부 scope/mask 존재 여부나 실제 값의 주입·검증·drop·마스킹을 실행하지 않습니다.
+실행 서버는 scope/mask 해석 실패를 허용으로 처리하지 않고 Page·Action 권한과 사용 맥락도 확인해야 합니다.
+같은 Action이라도 Page별 규칙은 독립적이며 Page 밖 호출에는 해당 Page의 규칙을 암묵적으로 적용하지 않습니다.
 
 ## 리소스 탐색과 snapshot
 
@@ -376,12 +448,13 @@ OpenAPI 변경·이동 시 지정 대상 명령으로 갱신한 결과까지 커
 | --- | --- |
 | `providedBy` | Endpoint → Service |
 | `invokes` | Action → method/path 대조로 찾은 Endpoint |
-| `uses` | Page → Action, overrides 속성 보존 |
+| `uses` | Page → Action, request/response 규칙 보존 |
 | `childOf` | Page → 상위 Page |
 
 snapshot의 `resources`에는 Service, 추출된 Endpoint, Action, Page를 포함합니다.
-`pageActionUsages`의 key는 Page/Action이고 `endpoint`는 매칭된 Endpoint.metadata.name입니다.
-`effective`는 service의 name/servers, method/path/security, request의 parameters/body, responses를 포함합니다.
+`page-action-usages`의 key는 Page/Action이고 `endpoint`는 매칭된 Endpoint.metadata.name입니다.
+`effective`는 service의 name/servers, method/path/security, request의 parameters/body와 선택적 rules, 원본 responses를 포함합니다.
+선택적인 response.fields는 실제 HTTP 200에 적용할 화이트리스트/마스킹 규칙이며 원본 responses와 구분합니다.
 parameter/body에는 `source` 또는 `value`, 명시한 response에는 `fields`가 추가됩니다.
 content/schema/headers/links 등 원본 응답 속성을 보존하고 `$ref` 루트는 연결된 Service.spec.openapi입니다.
 이 파생 계약은 독립적인 OpenAPI 문서가 아니며 응답 schema는 projection 전 upstream 검증용입니다.

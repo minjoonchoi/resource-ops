@@ -18,8 +18,8 @@ class HistorySelectionTests(Fixture):
         self.select(config)
         after = build_snapshot(self.root)
         self.assertEqual(self.effective(before), self.effective(after))
-        self.assertNotIn('/email', self.effective(after)['responses']['200']['fields'])
-        usages = [u for u in after['pageActionUsages'] if u['action'] == 'members.detail.read']
+        self.assertNotIn('email', self.effective(after)['response']['fields'])
+        usages = [u for u in after['page-action-usages'] if u['action'] == 'members.detail.read']
         for usage in usages:
             self.assertEqual(usage['plugins'][0]['config'], config)
         self.assertEqual(after, build_snapshot(self.root, verify_sources=False))
@@ -125,7 +125,7 @@ class HistorySelectionTests(Fixture):
                     operation['requestBody'] = {'content': {'application/json': {'schema': schema}}}
                 self.write('openapi/team/compat-api.json', document)
                 self.write('actions/compat.audit.yaml', {
-                    'apiVersion': 'resource-ops/v1', 'kind': 'Action',
+                    'api-version': 'resource-ops/v1', 'kind': 'Action',
                     'metadata': {'name': 'compat.audit', 'title': 'Audit'},
                     'spec': {'endpoint': {'service': 'compat-api', 'method': 'GET', 'path': '/records/{id}'},
                              'plugins': [{'name': 'history', 'config': {

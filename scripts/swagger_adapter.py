@@ -24,7 +24,7 @@ def swagger_contract(document, operation, parameters, resolve):
     schemes = operation.get('schemes', document.get('schemes', []))
     host, base_path = document.get('host'), document.get('basePath', '/')
     # Retain the source context requirements instead of inventing an HTTP scheme or host.
-    result['swaggerServer'] = {'host': host, 'basePath': base_path, 'schemes': copy.deepcopy(schemes)}
+    result['swagger-server'] = {'host': host, 'basePath': base_path, 'schemes': copy.deepcopy(schemes)}
     if host and schemes:
         result['servers'] = [{'url': f'{scheme}://{host}{base_path}'} for scheme in schemes]
     else:

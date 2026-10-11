@@ -13,8 +13,8 @@ from jsonschema.exceptions import SchemaError
 from catalog_common import CatalogError, VERSION, read_yaml, require, validate_shape
 from generate_services import files, generate
 from history_selection import validate_history_selection
-from openapi_catalog import (TEMPLATE, dereference, extract_endpoints, leaf_schema, parameter_key,
-                             parameters_by_key, schema_accepts, validate_service)
+from openapi_catalog import TEMPLATE, dereference, extract_endpoints, validate_service
+from page_rules import validate_page_rules
 
 DIRECTORIES = {"Service": "services", "Action": "actions", "Page": "pages"}
 
@@ -57,55 +57,26 @@ def resolve_action_endpoint(action, resources, routes):
 
 
 def resolve_page_action(page_name, usage, action, endpoint, service):
-    """Apply sparse Page overrides; all OpenAPI schema refs remain rooted at Service.spec.openapi."""
+    """Keep native contracts intact and attach validated Page execution policies."""
     location = f"Page/{page_name}.actions[{usage['action']}]"
     document = service["spec"]["openapi"]
-    overrides, contract = usage.get("overrides", {}), endpoint["spec"]["operation"]
-    available = parameters_by_key(contract["parameters"], location)
-    changed = parameters_by_key(overrides.get("request", {}).get("parameters", []), location)
-    require(set(changed) <= set(available), f"{location}: override references an unknown endpoint parameter")
-    for key, binding in changed.items():
-        require("schema" in available[key], f"{location}: parameter content overrides are unsupported")
-        require(key[0] != "header" or key[1] not in {"authorization", "proxy-authorization", "host", "cookie"},
-                f"{location}: transport/auth headers cannot be overridden")
-        schema = available[key]["schema"]
-        if "value" in binding:
-            require(schema_accepts(document, schema, binding["value"]),
-                    f"{location}: constant for {key} violates endpoint schema")
-        else:
-            resolved = dereference(schema, document)
-            require(isinstance(resolved, dict) and resolved.get("type") == "string",
-                    f"{location}: subject sources require a string parameter")
+    contract = endpoint["spec"]["operation"]
+    validate_page_rules(usage, contract, document, location)
     raw_responses = {status: copy.deepcopy(dereference(response, document))
                      for status, response in contract.get("responses", {}).items() if not status.startswith("x-")}
-    responses = overrides.get("responses", {})
-    require(set(responses) <= set(raw_responses), f"{location}: override references an unknown endpoint response status")
-    for status, projection in responses.items():
-        content = raw_responses[status].get("content", {})
-        require(len(content) == 1, f"{location}: response projection needs exactly one JSON media type")
-        media, payload = next(iter(content.items()))
-        require(media == "application/json" or (media.startswith("application/") and media.endswith("+json")),
-                f"{location}: response projection needs JSON content")
-        require("schema" in payload, f"{location}: response projection needs a schema")
-        for field in projection["fields"]:
-            leaf_schema(payload["schema"], field, document, f"{location}.responses.{status}")
-        raw_responses[status]["fields"] = copy.deepcopy(projection["fields"])
 
     effective = {"service": {"name": service["metadata"]["name"], "servers": copy.deepcopy(contract["servers"])},
                  "method": endpoint["spec"]["method"], "path": endpoint["spec"]["path"],
                  "security": copy.deepcopy(contract["security"]),
                  "request": {"parameters": copy.deepcopy(contract["parameters"])}, "responses": raw_responses}
-    for parameter in effective["request"]["parameters"]:
-        binding = changed.get(parameter_key(parameter), {"source": "input"})
-        if "value" in binding:
-            parameter["value"] = copy.deepcopy(binding["value"])
-        else:
-            parameter["source"] = binding["source"]
-    if "swaggerServer" in contract:
-        effective["service"]["swaggerServer"] = copy.deepcopy(contract["swaggerServer"])
+    if "request" in usage:
+        effective["request"]["rules"] = copy.deepcopy(usage["request"])
+    if "response" in usage:
+        effective["response"] = copy.deepcopy(usage["response"])
+    if "swagger-server" in contract:
+        effective["service"]["swagger-server"] = copy.deepcopy(contract["swagger-server"])
     if "requestBody" in contract:
         effective["request"]["body"] = copy.deepcopy(dereference(contract["requestBody"], document))
-        effective["request"]["body"]["source"] = "input"
     plugins = action["spec"].get("plugins", [])
     return {"page": page_name, "action": usage["action"], "endpoint": endpoint["metadata"]["name"],
             "plugins": copy.deepcopy(plugins),
@@ -120,7 +91,7 @@ def build_snapshot(root: Path, verify_sources=True):
     Draft202012Validator.check_schema(schema)
     validator = Draft202012Validator(schema)
     marker = read_yaml(root, "resource-catalog.yaml")
-    require(marker == {"resourceOps": {"apiVersion": VERSION}},
+    require(marker == {"resource-ops": {"api-version": VERSION}},
             "resource-catalog.yaml: Config Server marker must match the resource version")
     paths = sorted(path.relative_to(root).as_posix()
                    for directory in DIRECTORIES.values() for path in files(root, directory)
@@ -148,11 +119,13 @@ def build_snapshot(root: Path, verify_sources=True):
 
     relations = []
 
-    def link(source, relation, target_kind, target_name, overrides=None):
+    def link(source, relation, target_kind, target_name, usage=None):
         require((target_kind, target_name) in resources, f"{source}: missing reference {target_kind}/{target_name}")
         edge = {"from": source, "type": relation, "to": f"{target_kind}/{target_name}"}
-        if overrides is not None:
-            edge["overrides"] = copy.deepcopy(overrides)
+        if usage is not None:
+            for key in ("request", "response"):
+                if key in usage:
+                    edge[key] = copy.deepcopy(usage[key])
         relations.append(edge)
 
     routes = {}
@@ -175,7 +148,7 @@ def build_snapshot(root: Path, verify_sources=True):
                 action = usage["action"]
                 require(action not in actions, f"{source}: duplicate action usage {action}")
                 actions.add(action)
-                link(source, "uses", "Action", action, usage.get("overrides"))
+                link(source, "uses", "Action", action, usage)
             if "parent" in spec:
                 link(source, "childOf", "Page", spec["parent"])
 
@@ -204,14 +177,14 @@ def build_snapshot(root: Path, verify_sources=True):
                 current = resources["Page", current]["spec"].get("parent")
 
     snapshot = {
-        "apiVersion": VERSION,
+        "api-version": VERSION,
         "kind": "CatalogSnapshot",
         "resources": [resources[key] for key in sorted(resources)],
         "relations": sorted(relations, key=lambda edge: (edge["from"], edge["type"], edge["to"])),
-        "pageActionUsages": sorted(page_action_usages, key=lambda usage: (usage["page"], usage["action"])),
+        "page-action-usages": sorted(page_action_usages, key=lambda usage: (usage["page"], usage["action"])),
     }
     canonical = json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
-    snapshot["contentSha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    snapshot["content-sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     return snapshot
 
 
@@ -227,7 +200,7 @@ def main():
             args.snapshot.parent.mkdir(parents=True, exist_ok=True)
             args.snapshot.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         print(f"Catalog valid: {len(snapshot['resources'])} resources, {len(snapshot['relations'])} relations")
-        print(f"contentSha256: {snapshot['contentSha256']}")
+        print(f"content-sha256: {snapshot['content-sha256']}")
         return 0
     except (CatalogError, OSError, ValueError, RecursionError, SchemaError) as exc:
         print(f"Catalog invalid: {exc}", file=sys.stderr)

@@ -53,7 +53,7 @@ def read_yaml(root: Path, relative: str):
             raise CatalogError("file exceeds 32 MiB")
         text = path.read_text(encoding="utf-8")
         if "${" in text:
-            raise CatalogError("Spring placeholders are forbidden in catalog data; use source: subject.*")
+            raise CatalogError("Spring placeholders are forbidden in catalog data; use source: subject with field")
         if any(isinstance(token, (yaml.tokens.AnchorToken, yaml.tokens.AliasToken)) for token in yaml.scan(text)):
             raise CatalogError("YAML anchors and aliases are not supported")
         value = yaml.load(text, Loader=StrictLoader)

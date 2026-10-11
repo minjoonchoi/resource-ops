@@ -175,7 +175,7 @@ def make_service(document, organization, service, source):
             'method': method, 'path': path,
         })
     return {
-        'apiVersion': VERSION, 'kind': 'Service',
+        'api-version': VERSION, 'kind': 'Service',
         'metadata': {'name': service, 'organization': organization, 'title': document['info']['title']},
         'spec': {'endpoints': endpoints, 'openapi': copy.deepcopy(document)},
     }
@@ -201,7 +201,7 @@ def extract_endpoints(service):
             contract['parameters'] = copy.deepcopy(parameters)
             contract['servers'] = copy.deepcopy(operation.get('servers', item.get('servers', document.get('servers', []))) or [{'url': '/'}])
         contract['security'] = copy.deepcopy(operation.get('security', document.get('security', [])))
-        yield {'apiVersion': VERSION, 'kind': 'Endpoint',
+        yield {'api-version': VERSION, 'kind': 'Endpoint',
                'metadata': copy.deepcopy(index[method, path]['metadata']),
                'spec': {'service': name, 'method': method, 'path': path, 'operation': contract}}
 

@@ -11,7 +11,7 @@
 | `openapi/<organization>/<service>.json` | 개발조직: 서비스의 OpenAPI 원본 |
 | `services/<service>.yaml` | 자동 생성: Service, Endpoint 목록, OpenAPI 원문 |
 | `actions/<metadata.name>.yaml` | 개발조직: 업무와 서비스 참조·method·path |
-| `pages/<metadata.name>.yaml` | 화면 담당: Action 참조와 필요한 override |
+| `pages/<metadata.name>.yaml` | 화면 담당: Action 참조·요청 주입/scope 검증·응답 화이트리스트/마스킹 |
 | `scripts/generate_services.py` | 로컬·CI 공통 생성기 및 생성물 비교 |
 | `scripts/catalog.py` | 전체 카탈로그 검증과 DB 중립 snapshot 생성 |
 
@@ -39,7 +39,7 @@ Catalog kind와 manifest는 두지 않습니다. `services/`, `actions/`, `pages
 `actions/members.contact.read.yaml`처럼 업무를 직접 추가합니다. 생성기는 Action을 만들거나 수정하지 않습니다.
 
 ```yaml
-apiVersion: resource-ops/v1
+api-version: resource-ops/v1
 kind: Action
 metadata:
   name: members.contact.read
@@ -84,9 +84,41 @@ events 설정 없이 확인 과정과 호출 과정의 모든 이벤트가 포�
 `config.responses`로 실제 실행 요청/응답에서 저장할 필드를 고릅니다. 생략한 값은 저장하지 않습니다.
 Action.metadata.name과 실행 요청 ID를 기준으로 각 이벤트의 행위자·행위·시각·결과를 남기며,
 확인 대기/거절/취소로 endpoint를 호출하지 않은 경우도 기록합니다. 배열 순서와 무관하게 수집은 Action 시작부터 수행합니다.
-플러그인은 선택 사항이며 [실행 계약과 검증 범위](docs/catalog-model.md#action-실행-플러그인)를 따릅니다. 요청·응답 변경은 `Page.spec.actions[].overrides`에
-원본에서 달라지는 부분만 작성합니다. 같은 Action도 Page별 사용 계약은 독립적입니다.
-관계가 존재한다고 실행 권한이 자동 부여되는 것은 아니며, 실행 서버의 권한 확인이 필요합니다.
+플러그인은 선택 사항이며 [실행 계약과 검증 범위](docs/catalog-model.md#action-실행-플러그인)를 따릅니다.
+관계가 존재한다고 실행 권한이 자동 부여되는 것은 아니며 실행 서버의 권한 확인이 필요합니다.
+
+## Page의 요청·응답 규칙
+
+Page의 actions에는 action/request/response를 직접 작성합니다. overrides나 응답 상태코드 depth는 없습니다.
+
+```yaml
+action: members.directory.list
+request:
+  query:
+    organizationCode:
+      source: scope
+      name: organization-codes
+response:
+  fields:
+    items:
+      id: true
+      nickname: true
+      email:
+        mask: email
+    total: true
+```
+
+query/body의 실제 필드 깊이에 `source: subject`와 `field: nickname` 또는 `email`을 지정하면 사용자 값을 주입합니다.
+`source: scope`와 `name`은 사전 정의한 허용 값으로 입력을 검증합니다. UI가 주입값을 결정하지 않습니다.
+`response.fields`는 실제 HTTP 200에서 **명시된 필드만 포함하고 미지정 필드는 전부 drop**하는 화이트리스트입니다.
+true는 원래 값, mask는 사전 등록한 마스킹 규칙의 이름입니다. 배열 구조는 OpenAPI로 판단합니다.
+response를 생략하면 원본 응답을 사용합니다. 같은 Action의 Page별 규칙은 독립적입니다.
+실제 주입·scope 값 검증·응답 처리 및 scope/mask 해석은 실행 서버의 구현 범위입니다.
+
+저장소 소유 YAML 키는 `api-version`, `resource-ops`처럼 kebab-case로 통일합니다.
+OpenAPI 표준 키(`requestBody`, `operationId` 등)와 실제 API 필드명(`organizationCode`, `user_email` 등),
+GitHub Actions 등 외부 설정 문법은 원문을 보존합니다. 필드명을 바꾸면 API 계약이 달라지기 때문입니다.
+이전 apiVersion/overrides 형식은 지원하지 않습니다.
 
 ## 로컬 생성과 검증
 
@@ -151,6 +183,6 @@ OpenAPI 원본은 보존하지만 Page의 응답 필드 선택은 단일 JSON me
 snapshot은 리소스 8개·관계 10개·Page 사용 계약 4개를 포함합니다.
 실제 Config Server/DB reconciler 및 migration은 별도 구현이 필요합니다.
 
-- [카탈로그 규격·OpenAPI 보존·Page override](docs/catalog-model.md)
+- [카탈로그 규격·OpenAPI 보존·Page 요청/응답 규칙](docs/catalog-model.md)
 - [Config Server에서 같은 SHA의 YAML 조회](docs/config-server.md)
 - [DB 동기화·삭제·실패·롤백 계약](docs/synchronization.md)
