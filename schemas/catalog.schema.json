@@ -3,168 +3,376 @@
   "title": "resource-ops v1 catalog document",
   "type": "object",
   "additionalProperties": false,
-  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "spec"
+  ],
   "properties": {
-    "apiVersion": {"const": "resource-ops/v1"},
-    "kind": {"enum": ["Catalog", "Server", "Endpoint", "Action", "Page"]},
-    "metadata": {"$ref": "#/$defs/metadata"},
-    "spec": {"type": "object"}
+    "apiVersion": {
+      "const": "resource-ops/v1"
+    },
+    "kind": {
+      "enum": [
+        "Catalog",
+        "Service",
+        "Action",
+        "Page"
+      ]
+    },
+    "metadata": {
+      "$ref": "#/$defs/metadata"
+    },
+    "spec": {
+      "type": "object"
+    }
   },
   "allOf": [
-    {"if": {"properties": {"kind": {"const": "Catalog"}}}, "then": {"properties": {"spec": {"$ref": "#/$defs/catalog"}}}},
-    {"if": {"properties": {"kind": {"const": "Server"}}}, "then": {"properties": {"spec": {"$ref": "#/$defs/server"}}}},
-    {"if": {"properties": {"kind": {"const": "Endpoint"}}}, "then": {"properties": {"spec": {"$ref": "#/$defs/endpoint"}}}},
-    {"if": {"properties": {"kind": {"const": "Action"}}}, "then": {"properties": {"spec": {"$ref": "#/$defs/action"}}}},
-    {"if": {"properties": {"kind": {"const": "Page"}}}, "then": {"properties": {"spec": {"$ref": "#/$defs/page"}}}}
-  ],
-  "$defs": {
-    "name": {"type": "string", "maxLength": 128, "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$"},
-    "text": {"type": "string", "minLength": 1},
-    "baseUrl": {"type": "string", "pattern": "^https?://[^\\s]+$"},
-    "httpMethod": {"enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]},
-    "endpointPath": {"type": "string", "pattern": "^/(?!/)[^?#\\s]*$"},
-    "metadata": {
-      "type": "object", "additionalProperties": false,
-      "required": ["name", "title"],
-      "properties": {
-        "name": {"$ref": "#/$defs/name"},
-        "title": {"$ref": "#/$defs/text"},
-        "description": {"$ref": "#/$defs/text"}
-      }
-    },
-    "catalog": {
-      "type": "object", "additionalProperties": false, "required": ["resources"],
-      "properties": {
-        "resources": {
-          "type": "array", "minItems": 1, "uniqueItems": true,
-          "items": {"type": "string", "pattern": "^catalog/(servers|endpoints|actions|pages)/[a-z][a-z0-9.-]*\\.yaml$"}
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "Catalog"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "spec": {
+            "$ref": "#/$defs/catalog"
+          }
         }
       }
     },
-    "server": {
-      "type": "object", "additionalProperties": false, "required": ["baseUrl"],
-      "properties": {
-        "baseUrl": {"$ref": "#/$defs/baseUrl"},
-        "description": {"$ref": "#/$defs/text"}
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "Action"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "spec": {
+            "$ref": "#/$defs/action"
+          }
+        }
       }
     },
-    "valueSchema": {
-      "description": "Inline JSON Schema subset: explicit types, closed objects, homogeneous arrays, scalar constraints. No refs or composition in v1.",
-      "type": "object", "additionalProperties": false, "required": ["type"],
-      "properties": {
-        "type": {"enum": ["object", "array", "string", "integer", "number", "boolean", "null"]},
-        "description": {"$ref": "#/$defs/text"},
+    {
+      "if": {
         "properties": {
-          "type": "object", "minProperties": 1,
-          "propertyNames": {"not": {"const": "*"}},
-          "additionalProperties": {"$ref": "#/$defs/valueSchema"}
-        },
-        "required": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
-        "additionalProperties": {"const": false},
-        "items": {"$ref": "#/$defs/valueSchema"},
-        "enum": {"type": "array", "minItems": 1, "uniqueItems": true},
-        "const": {},
-        "minimum": {"type": "number"},
-        "maximum": {"type": "number"},
-        "minLength": {"type": "integer", "minimum": 0},
-        "maxLength": {"type": "integer", "minimum": 0},
-        "minItems": {"type": "integer", "minimum": 0},
-        "maxItems": {"type": "integer", "minimum": 0}
+          "kind": {
+            "const": "Page"
+          }
+        }
       },
-      "allOf": [
-        {"if": {"properties": {"type": {"const": "object"}}}, "then": {"required": ["properties", "additionalProperties"]}, "else": {"not": {"anyOf": [{"required": ["properties"]}, {"required": ["required"]}, {"required": ["additionalProperties"]}]}}},
-        {"if": {"properties": {"type": {"const": "array"}}}, "then": {"required": ["items"]}, "else": {"not": {"anyOf": [{"required": ["items"]}, {"required": ["minItems"]}, {"required": ["maxItems"]}]}}},
-        {"if": {"properties": {"type": {"not": {"const": "string"}}}}, "then": {"not": {"anyOf": [{"required": ["minLength"]}, {"required": ["maxLength"]}]}}},
-        {"if": {"properties": {"type": {"not": {"enum": ["integer", "number"]}}}}, "then": {"not": {"anyOf": [{"required": ["minimum"]}, {"required": ["maximum"]}]}}}
+      "then": {
+        "properties": {
+          "spec": {
+            "$ref": "#/$defs/page"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "Service"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "spec": {
+            "$ref": "#/$defs/service"
+          },
+          "metadata": {
+            "required": [
+              "organization"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "name": {
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$"
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1
+    },
+    "httpMethod": {
+      "enum": [
+        "GET",
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE",
+        "HEAD",
+        "OPTIONS",
+        "TRACE"
       ]
     },
-    "parameter": {
-      "type": "object", "additionalProperties": false, "required": ["in", "name", "required", "schema"],
+    "endpointPath": {
+      "type": "string",
+      "pattern": "^/(?!/)[^?#\\s]*$"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "title"
+      ],
       "properties": {
-        "in": {"enum": ["path", "query", "header", "cookie"]},
-        "name": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$"},
-        "required": {"type": "boolean"},
-        "schema": {"$ref": "#/$defs/valueSchema"}
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "title": {
+          "$ref": "#/$defs/text"
+        },
+        "description": {
+          "$ref": "#/$defs/text"
+        },
+        "organization": {
+          "$ref": "#/$defs/text"
+        }
       }
     },
-    "endpoint": {
-      "type": "object", "additionalProperties": false,
-      "required": ["server", "method", "path", "request", "responses"],
+    "catalog": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resources"
+      ],
       "properties": {
-        "server": {"$ref": "#/$defs/name"},
-        "method": {"$ref": "#/$defs/httpMethod"},
-        "path": {"$ref": "#/$defs/endpointPath"},
-        "request": {
-          "type": "object", "additionalProperties": false, "required": ["parameters"],
-          "properties": {
-            "parameters": {"type": "array", "items": {"$ref": "#/$defs/parameter"}},
-            "body": {
-              "type": "object", "additionalProperties": false, "required": ["required", "schema"],
-              "properties": {"required": {"type": "boolean"}, "schema": {"$ref": "#/$defs/valueSchema"}}
-            }
-          }
-        },
-        "responses": {
-          "type": "object", "minProperties": 1, "propertyNames": {"pattern": "^[1-5][0-9]{2}$"},
-          "additionalProperties": {
-            "type": "object", "additionalProperties": false, "required": ["description", "schema"],
-            "properties": {"description": {"$ref": "#/$defs/text"}, "schema": {"$ref": "#/$defs/valueSchema"}}
+        "resources": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^(services|actions|pages)/[a-z][a-z0-9.-]*\\.yaml$"
           }
         }
       }
     },
     "parameterOverride": {
-      "type": "object", "additionalProperties": false, "required": ["in", "name"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "in",
+        "name"
+      ],
       "properties": {
-        "in": {"enum": ["path", "query", "header", "cookie"]},
-        "name": {"$ref": "#/$defs/text"},
-        "source": {"enum": ["subject.id", "subject.email", "subject.nickname", "subject.organization.code"]},
+        "in": {
+          "enum": [
+            "path",
+            "query",
+            "header",
+            "cookie"
+          ]
+        },
+        "name": {
+          "$ref": "#/$defs/text"
+        },
+        "source": {
+          "enum": [
+            "subject.id",
+            "subject.email",
+            "subject.nickname",
+            "subject.organization.code"
+          ]
+        },
         "value": {}
       },
-      "oneOf": [{"required": ["source"]}, {"required": ["value"]}]
+      "oneOf": [
+        {
+          "required": [
+            "source"
+          ]
+        },
+        {
+          "required": [
+            "value"
+          ]
+        }
+      ]
     },
     "action": {
-      "type": "object", "additionalProperties": false, "required": ["service", "method", "path"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "service",
+        "method",
+        "path"
+      ],
       "properties": {
-        "service": {"$ref": "#/$defs/name"},
-        "method": {"$ref": "#/$defs/httpMethod"},
-        "path": {"$ref": "#/$defs/endpointPath"}
+        "service": {
+          "$ref": "#/$defs/name"
+        },
+        "method": {
+          "$ref": "#/$defs/httpMethod"
+        },
+        "path": {
+          "$ref": "#/$defs/endpointPath"
+        }
       }
     },
     "pageAction": {
-      "type": "object", "additionalProperties": false, "required": ["action"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action"
+      ],
       "properties": {
-        "action": {"$ref": "#/$defs/name"},
-        "overrides": {"$ref": "#/$defs/endpointOverrides"}
+        "action": {
+          "$ref": "#/$defs/name"
+        },
+        "overrides": {
+          "$ref": "#/$defs/endpointOverrides"
+        }
       }
     },
     "endpointOverrides": {
       "description": "Sparse changes for one Page/Action usage. Omitted values inherit the Endpoint contract.",
-      "type": "object", "additionalProperties": false, "minProperties": 1,
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
       "properties": {
         "request": {
-          "type": "object", "additionalProperties": false, "required": ["parameters"],
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "parameters"
+          ],
           "properties": {
-            "parameters": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/parameterOverride"}}
+            "parameters": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/parameterOverride"
+              }
+            }
           }
         },
         "responses": {
-          "type": "object", "minProperties": 1, "propertyNames": {"pattern": "^[1-5][0-9]{2}$"},
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "pattern": "^([1-5][0-9]{2}|[1-5]XX|default)$"
+          },
           "additionalProperties": {
-            "type": "object", "additionalProperties": false, "required": ["fields"],
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "fields"
+            ],
             "properties": {
-              "fields": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^(|/.*)$"}}
+              "fields": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^(|/.*)$"
+                }
+              }
             }
           }
         }
       }
     },
     "page": {
-      "type": "object", "additionalProperties": false, "required": ["path", "actions"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "actions"
+      ],
       "properties": {
-        "path": {"type": "string", "pattern": "^/(?!/)[^?#\\s]*$"},
-        "parent": {"$ref": "#/$defs/name"},
-        "actions": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/pageAction"}}
+        "path": {
+          "type": "string",
+          "pattern": "^/(?!/)[^?#\\s]*$"
+        },
+        "parent": {
+          "$ref": "#/$defs/name"
+        },
+        "actions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/pageAction"
+          }
+        }
+      }
+    },
+    "service": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "endpoints",
+        "openapi"
+      ],
+      "properties": {
+        "source": {
+          "type": "string",
+          "pattern": "^openapi/[^/]+/[a-z][a-z0-9.-]*\\.json$"
+        },
+        "endpoints": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "metadata",
+              "method",
+              "path"
+            ],
+            "properties": {
+              "metadata": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "organization",
+                  "title"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "organization": {
+                    "$ref": "#/$defs/text"
+                  },
+                  "title": {
+                    "$ref": "#/$defs/text"
+                  }
+                }
+              },
+              "method": {
+                "$ref": "#/$defs/httpMethod"
+              },
+              "path": {
+                "$ref": "#/$defs/endpointPath"
+              }
+            }
+          }
+        },
+        "openapi": {
+          "type": "object"
+        }
       }
     }
   }

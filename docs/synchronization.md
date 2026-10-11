@@ -23,6 +23,8 @@ manifest와 그 안의 모든 리소스 문서를 입력으로 받습니다.
 어떤 파일도 다른 commit SHA에서 섞어 읽지 않습니다.
 
 1. manifest, YAML 문법, `apiVersion`, 문서 스키마를 검증합니다.
+   Service.spec.openapi를 검증하고 spec.endpoints의 metadata·method·path를 다시 대조하여 Endpoint 리소스를 추출합니다.
+   Service·Endpoint의 organization은 원본 디렉터리에서 생성한 값이며 identity는 kind/metadata.name입니다.
 2. 파일 목록·identity·참조·Endpoint 계약·Action 직접 명세 대조·Page별 override·Page 계층을 검증합니다.
 3. kind/name으로 리소스를 정렬하고 직접 명세의 대조 결과와 참조에서 네 가지 연결 및 Page별 최종 사용 계약을 도출합니다.
 4. 현재 DB 상태와 비교하여 create/update/deactivate/unchanged 계획을 만듭니다.
@@ -51,12 +53,13 @@ DB drift 확인 없이 `sourceRevision` 또는 hash가 같다는 이유만으로
 
 Page의 Action 사용 정의가 override의 원본입니다. `uses.overrides`와 `pageActionUsages`는
 거기서 도출한 데이터이며 별도의 편집 원본으로 사용하지 않습니다.
-Action 원본에는 서비스명 참조·HTTP method/path를 그대로 저장하고, 요청/응답 필드 설정은 Page 사용 정의에 저장합니다.
+Service에는 OpenAPI 원문 전체를 저장하고 Endpoint.operation의 `$ref`는 이 문서를 루트로 해석합니다.
+Action 원본에는 Service.metadata.name 참조·HTTP method/path를 그대로 저장하고, 요청/응답 필드 설정은 Page 사용 정의에 저장합니다.
 Action 입력에 Endpoint ID는 없으며 등록 정의와 일치함을 확인한 뒤 DB 연결 identity를 도출합니다.
-`pageActionUsages.endpoint`는 대조 결과의 Endpoint 이름이고, effective에는 참조한 Server에서 가져온 service 정보(`name`, `baseUrl`)도 포함합니다.
+`pageActionUsages.endpoint`는 대조 결과의 Endpoint 이름이고, effective에는 참조한 Service와 OpenAPI 상속 규칙에서 가져온 service 정보(`name`, `servers`)도 포함합니다.
 DB 적재 편의를 위한 관계/FK와 작성자가 입력한 직접 명세를 구분해서 보존합니다.
 사용 계약의 key는 `(sourceId, catalogName, page, action)`입니다.
-Server·Endpoint·Action 직접 명세가 변경되면 일치 여부를 다시 검증하고 연결된 모든 Page의 effective를 다시 계산합니다.
+Service·Endpoint·Action 직접 명세가 변경되면 일치 여부를 다시 검증하고 연결된 모든 Page의 effective를 다시 계산합니다.
 변경된 Page 파일만 부분 처리하면 상속 데이터가 오래된 상태로 남으므로 전체 snapshot에서 재계산합니다.
 
 ## 트랜잭션과 동시 실행
@@ -66,7 +69,7 @@ Server·Endpoint·Action 직접 명세가 변경되면 일치 여부를 다시 �
 1. `(sourceId, catalogName)` 상태 행에 lock을 획득합니다.
 2. 계획 작성 시 관측한 generation/observedRevision이 현재 상태와 같은지 확인합니다.
 3. 새 desiredRevision이 예약되었으면 오래된 작업의 반영을 취소하고 최신 snapshot으로 다시 계획합니다.
-4. Server → Endpoint → Action → Page 순서로 upsert합니다. Page parent FK는 모든 Page upsert 뒤 연결합니다.
+4. Service → Endpoint → Action → Page 순서로 upsert합니다. Page parent FK는 모든 Page upsert 뒤 연결합니다.
 5. 이 source/catalog가 소유한 연결과 Page별 사용 계약을 새 snapshot과 일치하도록 교체합니다.
 6. snapshot에서 제거된 리소스를 비활성화하고 처리된 sourceRevision/hash/통계를 기록합니다.
 7. 리소스·연결·Page별 사용 계약·observedRevision·성공 이력을 함께 commit합니다.
@@ -123,7 +126,7 @@ force push나 DB 수동 수정 없이 Git 이력과 적용 이력을 연결합�
 ## 소비자 완료 기준
 
 - 동일 SHA 전체 조회, 실패 시 무변경, 같은 commit 재시도, DB drift 복구를 통합 검증합니다.
-- 서비스 미등록, Server의 잘못된 base URL, method/path 오타가 snapshot/DB 반영 전에 차단되는지 검증합니다.
+- 서비스 미등록, 잘못된 OpenAPI 계약, method/path 오타가 snapshot/DB 반영 전에 차단되는지 검증합니다.
 - 연결 제거와 리소스 비활성화의 원자성, 외부 참조 차단, 두 worker의 경합을 검증합니다.
 - Page별 상속·subject 주입·응답 projection은 DB 적재와 별개로 실행 서버에서 검증합니다.
 - 같은 Action의 Page별 override가 섞이지 않는지, 변경하지 않은 요청/응답을 상속하는지 검증합니다.

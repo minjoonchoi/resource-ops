@@ -1,109 +1,113 @@
 # resource-ops
 
-서버, API 엔드포인트, 업무 액션, 페이지를 YAML로 정의하는 GitOps 카탈로그 저장소입니다.
-Spring Cloud Config Server가 이 저장소의 특정 Git 커밋을 제공하고, 별도 동기화 서버가
-전체 카탈로그를 검증한 뒤 리소스와 연결 관계를 DB에 반영합니다.
+조직별 OpenAPI JSON에서 서비스·엔드포인트 카탈로그를 생성하고, 개발조직이 업무(Action)와
+화면별 사용 방식(Page)을 YAML로 정의하는 GitOps 저장소입니다. Spring Cloud Config Server는
+특정 커밋의 YAML을 제공하고, 별도 동기화 서버가 전체 검증 후 DB에 반영합니다.
 
-## 구성과 구현 범위
+## 파일과 작성 책임
 
-| 구성 | 역할 | 이 저장소의 상태 |
-| --- | --- | --- |
-| YAML 카탈로그 | 리소스 원본과 Action 직접 명세 | 예제 8개 구현 |
-| JSON Schema / 검증 CLI | 형식, 참조, Action 명세 대조, Page override 검증 | 구현 |
-| 정규화 snapshot | 리소스·관계·Page별 최종 사용 계약을 담은 DB 중립 JSON | 로컬 생성 가능 |
-| GitHub Actions | PR / master 변경 검증 | 워크플로 정의 |
-| Cloud Config Server | 커밋별 YAML 제공 | 외부 서버 설정 예제와 조회 계약 제공 |
-| DB 동기화 서버 | diff, 트랜잭션 반영, 이력, 재시도 | 외부 서버가 구현할 계약 문서 제공 |
+| 경로 | 작성자 / 내용 |
+| --- | --- |
+| `openapi/<organization>/<service>.json` | 개발조직: 서비스의 OpenAPI 원본 |
+| `services/<service>.yaml` | 자동 생성: Service, Endpoint 목록, OpenAPI 원문 |
+| `actions/<metadata.name>.yaml` | 개발조직: 업무와 서비스 참조·method·path |
+| `pages/<metadata.name>.yaml` | 화면 담당: Action 참조와 필요한 override |
+| `catalog/manifest.yaml` | 자동 생성: Config Server가 읽을 YAML 파일 목록 |
+| `scripts/generate_services.py` | 로컬·CI 공통 생성기 및 생성물 비교 |
+| `scripts/catalog.py` | 전체 카탈로그 검증과 DB 중립 snapshot 생성 |
 
-현재 데이터는 `example.invalid`를 사용하는 **가상 회원 서비스 예제**입니다.
-실제 서버 주소·API 계약으로 교체하고 동기화 서버를 연결해야 운영 DB에 적용됩니다.
+예제 `openapi/member-team/member-api.json`은 `services/member-api.yaml`이 됩니다.
+Service와 그 안의 모든 Endpoint에 `metadata.organization: member-team`을 넣으며,
+Service의 `metadata.name`은 JSON 파일의 확장자를 뺀 `member-api`입니다.
+조직이 달라도 같은 서비스 파일명은 사용할 수 없습니다.
 
-## 리소스 모델
+서비스 YAML은 `spec.openapi`에 원본 OpenAPI를 보존하고 `spec.endpoints`에 엔드포인트
+식별자·조직·method·path를 생성합니다. request/response를 별도 형식으로 다시 작성하지 않습니다.
+`servers`, `components`, `$ref`, `content`, security 등 원본 계약을 함께 보존합니다.
 
-| 리소스 | 정의 | 연결 방식 |
-| --- | --- | --- |
-| `Server` | API를 제공하는 논리 서버와 base URL | 없음 |
-| `Endpoint` | 서버의 HTTP method/path와 원본 요청·응답 계약 | `spec.server` → Server 1개 |
-| `Action` | 업무/권한 단위와 호출할 API 직접 명세 | `service` → Server 참조, `method` + `path` 대조 |
-| `Page` | 화면 경로와 Action별 Endpoint override | `spec.actions[].action` → Action 여러 개, `spec.parent` → 상위 Page |
+## 개발조직의 Action 작성
 
-Endpoint가 원본 요청·응답 계약을 정의하고 Action은 서비스를 이름으로 참조하고 HTTP 메서드·경로를 직접 명시합니다.
-Action 파일만 읽어도 호출 대상을 알 수 있으며 Endpoint ID를 작성하지 않습니다.
+먼저 생성된 서비스 YAML의 `metadata.name`과 엔드포인트 method/path를 확인합니다.
+`actions/members.detail.read.yaml`처럼 업무를 직접 추가합니다. 생성기는 Action을 만들거나 수정하지 않습니다.
 
 ```yaml
+apiVersion: resource-ops/v1
+kind: Action
+metadata:
+  name: members.detail.read
+  title: 회원 기본 정보 보기
+  organization: member-team
 spec:
   service: member-api
   method: GET
   path: /v1/members/{memberId}
 ```
 
-검증 스크립트가 서비스 참조가 등록된 Server를 가리키는지 확인하고, 동일 서비스의 method/path와
-정확히 일치하는 Endpoint를 확인합니다. 경로 변수명도 일치해야 하며 잘못된 명세는 CI에서 실패합니다.
-실제 페이지의 사용 방식은 `Page.spec.actions[].overrides`에 **원본에서 달라지는 부분만** 작성합니다.
-override를 생략하면 Endpoint를 그대로 상속하며, parameter는 `(in, name)`, 응답은 상태코드별로 적용합니다.
-여러 Action이 동일한 API를 명시할 수 있고, Page와 Action은 다대다입니다.
-Action의 직접 명세를 검증한 결과와 나머지 리소스의 참조에서 DB 연결 데이터를 도출합니다.
-별도 관계 YAML에 같은 연결을 반복해서 쓰지 않습니다.
+`service`는 **Service.metadata.name** 참조입니다. JSON의 `info.title`, `operationId`, 조직명,
+파일 경로나 URL을 서비스 참조 키로 사용하지 않습니다. Endpoint ID를 Action에 작성하지 않으며,
+서비스·method·path로 대조한 Endpoint의 `metadata.name`을 DB 연결 키로 사용합니다.
+Page의 Action 참조 및 상위 Page 참조도 대상의 `metadata.name`을 사용합니다.
 
-예제에서 같은 `members.detail.read` Action을 회원 목록 Page는 ID·닉네임만,
-상세 Page는 조직코드까지 선택하도록 사용합니다. `members.contact.read` 사용 정의는 연락처를 선택합니다.
-회원 목록 Page의 `members.directory.list` 사용 정의는 조직코드를 주입하고 페이지 크기를 20으로 고정합니다.
-변경하지 않는 page parameter와 오류 응답은 YAML에 반복 작성하지 않습니다.
+Action은 업무/권한 단위만 정의합니다. 요청·응답 변경은 `Page.spec.actions[].overrides`에
+원본에서 달라지는 부분만 작성합니다. 같은 Action도 Page별 사용 계약은 독립적입니다.
+관계가 존재한다고 실행 권한이 자동 부여되는 것은 아니며, 실행 서버의 권한 확인이 필요합니다.
 
-이 연결은 **구조와 사용 계약**입니다. Page에 Action이 연결되어 있다고 해서
-해당 Page의 접근 권한만으로 Action 실행 권한까지 부여되지는 않습니다.
-페이지에서 실행할 때 서버가 `(Page, Action)` 사용 정의를 확인하고 해당 override를 적용합니다.
-Action 자체에는 요청·응답 필드 제한이 없으며, Page의 override를 다른 페이지에 전역 적용하지 않습니다.
-직접 Endpoint 허용 정책과 Action에서 파생된 허용은 권한 서버에서 구분합니다.
-Workspace·정책·역할·사용자·서비스 어카운트 할당은 현재 카탈로그 범위에 포함하지 않습니다.
+## 로컬 생성과 검증
 
-## 파일 위치
-
-| 경로 | 내용 |
-| --- | --- |
-| `catalog/manifest.yaml` | 동기화할 리소스 파일의 명시적 목록 |
-| `catalog/servers/*.yaml` | Server |
-| `catalog/endpoints/*.yaml` | Endpoint |
-| `catalog/actions/*.yaml` | Action |
-| `catalog/pages/*.yaml` | Page |
-| `schemas/catalog.schema.json` | v1 문서 스키마 |
-| `scripts/catalog.py` | 전체 검증 및 snapshot 생성 |
-| `resource-catalog.yaml` | Config Environment API용 manifest 위치/버전 안내 |
-| `examples/config-server.application.yaml` | Config Server 자체 설정 예제 |
-| `tests/test_catalog.py` | 정상 및 오류 데이터 검증 |
-
-## 로컬 검증
-
-Python 3.12 이상을 사용합니다. Python은 이 저장소의 검증 도구에만 필요하며
-Config Server나 동기화 서버의 구현 언어를 제한하지 않습니다.
+Python 3.12 이상에서 실행합니다.
 
 ```sh
 python -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python scripts/catalog.py
+# 신규 생성, 기존 서비스 갱신, 삭제된 원본의 생성물 정리, manifest 갱신
+.venv/bin/python scripts/generate_services.py
+# 아무 파일도 수정하지 않고 원본과 생성물 비교
+.venv/bin/python scripts/generate_services.py --check
 .venv/bin/python scripts/catalog.py --snapshot dist/catalog.snapshot.json
 .venv/bin/python -m unittest discover -s tests -v
 ```
 
-snapshot은 원본 리소스와 `providedBy`, `invokes`, `uses`, `childOf` 관계를 포함합니다.
-`uses` 관계는 Page의 override를 보존하고, `pageActionUsages`는 Endpoint에 override를 적용한 최종 사용 계약입니다.
-`dist/`는 Git에 저장하지 않습니다. 실제 동기화 서버는 전달받은 커밋 SHA와 함께
-검증 결과를 기록해야 합니다. CLI 자체는 네트워크 조회나 DB 쓰기를 수행하지 않습니다.
+새 OpenAPI를 추가한 뒤 스크립트로 서비스 YAML을 생성하고, 이를 보고 Action을 작성한 다음
+스크립트를 다시 실행하면 manifest에 Action도 등록됩니다. 원본·생성물·Action을 함께 커밋합니다.
+기존 OpenAPI 변경/삭제/이동도 로컬 스크립트를 실행하여 생성물 변경과 함께 커밋합니다.
+`dist/` snapshot은 Git에 저장하지 않습니다.
 
-## 변경 절차
+## PR 자동화
 
-1. 작업 브랜치에서 YAML을 생성·수정하고 `manifest.yaml` 목록을 갱신합니다.
-2. 전체 검증을 실행합니다. Endpoint method/path를 바꿀 때 관련 Action 명세도 같은 PR에서 변경합니다. 서비스 주소는 Server에서만 변경합니다.
-3. PR에서 원본 계약, Page별 Action 사용 방식, 관계 변경 및 삭제 영향을 검토합니다.
-4. PR을 `master`에 병합합니다. 동기화 서버가 병합된 HEAD의 커밋 SHA를 확정합니다.
-5. 해당 SHA의 manifest와 모든 리소스를 읽고 전체 검증·diff 후 한 트랜잭션으로 반영합니다.
-6. 실패하면 마지막 정상 상태를 유지합니다. 롤백은 이전 변경을 revert한 새 커밋으로 진행합니다.
+동일 저장소의 PR에서는 `--create-missing`을 실행합니다.
 
-워크플로를 필수 PR 검사로 지정하는 branch protection과 동기화 서버 실행은 별도 운영 설정입니다.
-현재 워크플로는 검증만 수행하며 DB 동기화를 직접 트리거하지 않습니다.
+| 상태 | Workflow 처리 |
+| --- | --- |
+| 원본이 있고 서비스 YAML이 없음 | 생성 후 전체 검증, 같은 PR 브랜치에 봇 커밋 |
+| 기존 서비스 YAML이 생성 결과와 동일 | 비교만 수행, 파일 수정·불필요한 커밋 없음 |
+| 기존 서비스 YAML이 다름 | 덮어쓰지 않고 실패, 로컬 재생성 명령 안내 |
+| 원본 없이 생성 YAML만 남음 | 실패, 원본 삭제 의도와 로컬 재생성 결과 확인 필요 |
+| Action/Page 추가·삭제 | manifest 파일 목록 자동 갱신; Action/Page 내용은 유지 |
+| Fork/Dependabot PR, master push, 수동 실행 | `--check`만 실행; 생성물을 미리 커밋해야 함 |
 
-## 상세 문서
+서비스 YAML은 주석·포맷까지 결정적인 결과와 비교합니다. JSON의 object key 순서나 공백은
+생성 결과에 영향을 주지 않습니다. 기존 YAML 불일치는 임의 수정인지 미재생성인지 자동 단정하지 않고
+모두 실패시킵니다. manifest는 파일 목록이므로 새 파일 등록 시 자동 갱신할 수 있습니다.
 
-- [YAML 규격과 Page별 Action 사용 계약](docs/catalog-model.md)
-- [Spring Cloud Config 연결과 커밋 고정 조회](docs/config-server.md)
-- [DB 동기화 계약, 삭제, 실패, 롤백](docs/synchronization.md)
+봇은 검증·테스트 완료 후 `services/`와 manifest만 커밋하며 force push하지 않습니다.
+검증한 최종 커밋에 `catalog/validate` 상태를 기록하여 봇 push 후 추가 CI 실행에 의존하지 않습니다.
+[GitHub 토큰 정책](https://docs.github.com/en/actions/concepts/security/github_token)에 따라
+봇 갱신 후 후속 PR workflow가 승인을 기다릴 수도 있으므로 검증은 현재 실행 안에서 완료합니다.
+쓰기 가능한 Actions 토큰이 필요합니다. 조직 정책이 이를 제한하면 생성물을 로컬에서 커밋합니다.
+Fork에서 쓰기 권한을 얻기 위한 `pull_request_target`은 사용하지 않습니다.
+필수 검사 및 branch protection은 별도 운영 설정이며 이 PR에서 변경하지 않습니다.
+
+## 지원 범위와 연결
+
+OpenAPI **3.0.x / 3.1.x JSON**, 문서 내부 JSON Pointer `$ref`를 지원합니다.
+외부 `$ref`는 단일 JSON으로 bundle해서 전달합니다. 2.0/3.2, `$id`·anchor·dynamic ref는 현재 범위 밖입니다.
+OpenAPI 원본은 보존하지만 Page의 응답 필드 선택은 단일 JSON media type의 명확한 leaf schema만 지원합니다.
+복합 스키마와 여러 media type의 projection은 추측하지 않고 실패합니다.
+
+현재 예제는 가상 서비스 1개, 엔드포인트 2개, Action 3개, Page 2개이며
+snapshot은 리소스 8개·관계 10개·Page 사용 계약 4개를 포함합니다.
+실제 Config Server/DB reconciler 및 migration은 별도 구현이 필요합니다.
+
+- [카탈로그 규격·OpenAPI 보존·Page override](docs/catalog-model.md)
+- [Config Server에서 같은 SHA의 YAML 조회](docs/config-server.md)
+- [DB 동기화·삭제·실패·롤백 계약](docs/synchronization.md)

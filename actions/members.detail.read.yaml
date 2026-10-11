@@ -3,6 +3,7 @@ kind: Action
 metadata:
   name: members.detail.read
   title: 회원 기본 정보 보기
+  organization: member-team
 spec:
   service: member-api
   method: GET

@@ -3,6 +3,7 @@ kind: Action
 metadata:
   name: members.directory.list
   title: 회원 목록 조회
+  organization: member-team
 spec:
   service: member-api
   method: GET

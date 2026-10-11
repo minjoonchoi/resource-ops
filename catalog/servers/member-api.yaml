@@ -1,9 +1,0 @@
-apiVersion: resource-ops/v1
-kind: Server
-metadata:
-  name: member-api
-  title: 회원 API 서버
-  description: 카탈로그 구조를 설명하기 위한 가상 서버입니다.
-spec:
-  baseUrl: https://members.example.invalid
-  description: 회원 조회 API를 제공하는 논리 서버

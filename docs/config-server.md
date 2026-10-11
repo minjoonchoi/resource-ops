@@ -11,7 +11,7 @@ Config Server 자체 설정에 반영합니다. `@EnableConfigServer`와 버전 
 `clone-on-start`는 기동 시 저장소 접근 실패를 드러내고, `refresh-rate: 0`은 요청 시 Git 상태를 갱신합니다.
 카탈로그 동기화 주기 자체는 동기화 서버의 스케줄러가 결정합니다.
 
-`search-paths`는 지정하지 않습니다. plain-text 요청의 경로에 `catalog/...`를 포함합니다.
+`search-paths`는 지정하지 않습니다. plain-text 요청의 경로에 `catalog/manifest.yaml`, `services/...`, `actions/...`, `pages/...`를 포함합니다.
 `catalog/`나 리소스 하위 디렉터리를 search-path로 중복 등록하지 않습니다.
 운영에서는 Config Server 접근 인증, Git 읽기 자격증명, 재사용 가능한 checkout 디렉터리를 서버 환경에 설정합니다.
 이 저장소에는 실행 환경의 자격증명 값을 저장하지 않습니다.
@@ -22,7 +22,7 @@ Config Server 자체 설정에 반영합니다. `@EnableConfigServer`와 버전 
 | --- | --- | --- |
 | 현재 브랜치 revision 확인 | `GET /resource-catalog/default/master` | Environment JSON의 `version`과 설정 marker |
 | manifest 조회 | `GET /resource-catalog/default/{sha}/catalog/manifest.yaml` | YAML 문서 |
-| 개별 리소스 조회 | `GET /resource-catalog/default/{sha}/catalog/endpoints/members.get.yaml` | 원본 리소스 YAML |
+| 개별 리소스 조회 | `GET /resource-catalog/default/{sha}/services/member-api.yaml` | 생성된 Service YAML (OpenAPI·Endpoint 목록 포함) |
 
 루트 `resource-catalog.yaml`은 Environment API에 manifest 위치와 규격 버전을 알리는 작은 설정입니다.
 리소스 문서 자체를 Spring property source로 평탄화하거나 여러 YAML을 속성 우선순위로 합성하지 않습니다.
@@ -60,7 +60,7 @@ CATALOG_REVISION='<environment-version>'
 curl --fail --silent --show-error \
   "$CONFIG_SERVER_URL/resource-catalog/default/$CATALOG_REVISION/catalog/manifest.yaml"
 curl --fail --silent --show-error \
-  "$CONFIG_SERVER_URL/resource-catalog/default/$CATALOG_REVISION/catalog/endpoints/members.get.yaml"
+  "$CONFIG_SERVER_URL/resource-catalog/default/$CATALOG_REVISION/services/member-api.yaml"
 ```
 
 소비자는 HTTP timeout, bounded retry, 응답 크기 한도를 적용하고 HTML 오류 페이지나 빈 응답을
@@ -68,11 +68,15 @@ curl --fail --silent --show-error \
 그 안의 resource 경로는 이 저장소의 경로 규칙을 검사한 뒤 조회합니다.
 환경설정 marker가 가리키는 임의의 외부 URL을 따라가지 않습니다.
 카탈로그 전체를 내려받아 격리된 임시 디렉터리에 보관한 뒤 같은 검증 규칙을 적용할 수 있습니다.
+`python scripts/catalog.py --root <download-directory> --from-generated`는 OpenAPI JSON 없이
+내려받은 생성 YAML과 Action/Page를 검증합니다. 검증기와 schema는 배포된 신뢰 버전을 사용합니다.
+CI에서는 이 옵션을 쓰지 않고 JSON 원본과 생성물의 일치까지 검사합니다.
+Service YAML 자체가 원본 OpenAPI를 포함하므로 Config Server 소비자가 JSON을 추가 조회할 필요는 없습니다.
 
 ## 연결 시 확인할 항목
 
 - `resource-catalog/default/master`에서 `version`과 `resourceOps.manifest` marker를 확인합니다.
-- 같은 SHA의 manifest와 파일 8개를 읽어 참조 10개가 만들어지는지 확인합니다.
+- 같은 SHA의 manifest와 YAML 파일 6개를 읽어 리소스 8개와 참조 10개가 만들어지는지 확인합니다.
 - Action의 서비스 참조를 확인하고 직접 작성한 method·path를 등록 정의와 대조해 일치하는 Endpoint 연결을 도출하는지 확인합니다.
 - Page별 사용 계약 4개를 도출하고 동일 Action의 override가 각 Page에 독립적으로 적용되는지 확인합니다.
 - master가 변경되어도 이전 SHA 조회 결과가 그대로 유지되는지 확인합니다.
