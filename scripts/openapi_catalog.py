@@ -1,6 +1,5 @@
 """Version-aware Swagger 2.0 / OpenAPI 3.0, 3.1, 3.2 catalog extraction."""
 import copy
-import hashlib
 import re
 from urllib.parse import unquote
 
@@ -97,12 +96,8 @@ def parameters_by_key(parameters, location):
 
 def endpoint_name(service, method, path):
     # Stable across documentation/operationId edits and independent of upstream naming conventions.
-    if method in {m.upper() for m in (*METHODS, 'query')}:
-        digest = hashlib.sha256(path.encode('utf-8')).hexdigest()[:16]
-        return f'{service}.{method.lower()}.{digest}'
-    # Extension method tokens are case-sensitive and may contain non-name characters.
-    digest = hashlib.sha256(f'{method} {path}'.encode('utf-8')).hexdigest()[:16]
-    return f'{service}.operation.{digest}'
+    # Treat the complete string as an opaque identity; never split it on dots.
+    return f'{service}.{method}.{path}'
 
 
 def operations(document):
@@ -169,9 +164,14 @@ def make_service(document, organization, service, source):
     validate_openapi(document, source)
     endpoints = []
     for path, method, _, operation in operations(document):
+        metadata = {'name': endpoint_name(service, method, path), 'organization': organization}
+        for field in ('summary', 'description'):
+            text = operation.get(field)
+            if isinstance(text, str) and text.strip():
+                metadata['description'] = text
+                break
         endpoints.append({
-            'metadata': {'name': endpoint_name(service, method, path), 'organization': organization,
-                         'title': operation.get('summary') or operation.get('operationId') or f'{method} {path}'},
+            'metadata': metadata,
             'method': method, 'path': path,
         })
     return {

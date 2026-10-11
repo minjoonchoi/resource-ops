@@ -50,7 +50,7 @@ null과 수치 범위는 해당 버전의 값 검증기로 검사합니다. 3.1/
 
 3.2의 고정 `query` operation은 `QUERY`로 등록합니다. `additionalOperations`의 키는 전송할 HTTP method를
 그대로 사용하므로 `COPY`와 `copy`는 서로 다릅니다. Action에서도 대소문자를 그대로 작성해야 합니다.
-표준 메서드의 기존 Endpoint 이름은 유지하고, 확장 메서드는 method와 path를 함께 해시하여 충돌을 피합니다.
+표준/확장 메서드 모두 Endpoint 이름은 `<service>.<method>.<원본 path>`이며 경로와 메서드 토큰을 보존합니다.
 querystring의 content와 스트리밍 itemSchema 등 새 필드는 원문·사용 계약에 보존합니다.
 응답 명세가 생략된 operation도 등록하며 Page가 없는 응답을 override하려 하면 검증에서 실패합니다.
 

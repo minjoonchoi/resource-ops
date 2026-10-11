@@ -22,8 +22,13 @@ Service의 `metadata.name`은 JSON 파일의 확장자를 뺀 `member-api`입니
 조직이 달라도 같은 서비스 파일명은 사용할 수 없습니다.
 
 서비스 YAML은 `spec.openapi`에 원본 OpenAPI를 보존하고 `spec.endpoints`에 엔드포인트
-식별자·조직·method·path를 생성합니다. request/response를 별도 형식으로 다시 작성하지 않습니다.
+식별자·설명·조직·method·path를 생성합니다. request/response를 별도 형식으로 다시 작성하지 않습니다.
 `servers`, `components`, `$ref`, `content`, security 등 원본 계약을 함께 보존합니다.
+
+Endpoint의 `metadata.name`은 `member-api.GET./v1/members/{memberId}`처럼
+`<서비스명>.<메소드>.<원본 경로>`이며 경로의 `/`, `.`, 대소문자 등을 그대로 보존합니다.
+`metadata.description`에는 operation의 summary를 우선 가져오고, 없거나 공백이면 description을
+사용합니다. 둘 다 없으면 설명 필드는 생략하며 원본 OpenAPI 내용은 그대로 보존합니다.
 
 ## 개발조직의 Action 작성
 

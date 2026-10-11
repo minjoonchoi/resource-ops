@@ -28,11 +28,33 @@ JSON 파일명에서 `.json`만 제거한 값을 Service의 `metadata.name`으�
 | `spec.endpoints[]` | `paths`의 각 HTTP operation에서 생성한 metadata·method·path |
 
 Endpoint의 `metadata.organization`은 Service와 같습니다. `metadata.name`은
-`<service>.<소문자 method>.<SHA-256(path UTF-8)의 앞 16자리>`로 생성합니다.
-`operationId`는 원문에 보존하며 필수 식별키로 사용하지 않습니다. 빠져 있거나 camelCase여도
-가져올 수 있고, 제목·operationId가 바뀌어도 동일 서비스·method·path의 Endpoint identity는 유지됩니다.
-3.2 확장 메서드는 `<service>.operation.<SHA-256(method + 공백 + path)의 앞 16자리>`를 사용하며
-메서드 대소문자를 보존합니다. 해시 충돌로 identity가 중복되면 전체 snapshot 생성을 실패시킵니다.
+`<service>.<method>.<원본 path>`로 생성합니다. 예: `member-api.GET./v1/members/{memberId}`.
+표준 메서드는 `GET`, `POST`처럼 대문자로, 3.2 확장 메서드는 원래 대소문자/토큰 그대로 사용합니다.
+경로의 `/`, `.`, `{}`, 대소문자, percent encoding 및 trailing slash를 변환하거나 생략하지 않습니다.
+Endpoint 이름은 경로 길이에 맞춰 보존하며 Service/Action/Page 이름의 128자 제한을 적용하지 않습니다.
+전체 문자열을 식별키로 사용하고 점으로 분리하여 service/method/path를 복원하지 않습니다.
+각 값은 별도 필드에서 읽으며, 검증기는 원문에서 재생성한 이름과 metadata가 일치하는지 확인합니다.
+`operationId`는 원문에 보존하며 필수 식별키로 사용하지 않습니다. 누락되어도 생성할 수 있고,
+설명·operationId가 바뀌어도 동일 서비스·method·path의 Endpoint identity는 유지됩니다.
+같은 method/path의 중복 route 및 전체 카탈로그의 Endpoint identity 중복은 거부합니다.
+특히 서비스명과 확장 메서드 모두 점을 포함하여 조합이 충돌하는 경우도 전체 검증에서 실패합니다.
+
+Endpoint의 `metadata.description`은 operation의 공백이 아닌 `summary`를 우선 사용하고,
+없거나 공백이면 공백이 아닌 `description`을 사용합니다. 선택된 문자열은 원문 그대로 복사하며,
+둘 다 없거나 공백이면 필드를 생략합니다. `operationId`나 method/path로 설명을 대신 만들지 않습니다.
+Endpoint에는 `metadata.title`을 생성하지 않으며 원본 OpenAPI의 summary/description은 모두 보존합니다.
+
+```yaml
+metadata:
+  name: member-api.GET./v1/members/{memberId}
+  organization: member-team
+  description: 회원 단건 조회
+method: GET
+path: /v1/members/{memberId}
+```
+
+기존 해시 기반 이름은 이 규칙으로 변경됩니다. 동기화 소비자는 새 snapshot의 Endpoint 및 관계를
+함께 반영해야 합니다. Action은 service/method/path로 연결되므로 이름 변경 때문에 수정할 필요가 없습니다.
 
 request/response는 OpenAPI의 `parameters`, `requestBody`, `responses`, `content`, `schema`로 보존합니다.
 `$ref`도 그대로 보존하고 **Service.spec.openapi를 참조 루트**로 해석합니다.

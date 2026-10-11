@@ -337,18 +337,16 @@
                 "additionalProperties": false,
                 "required": [
                   "name",
-                  "organization",
-                  "title"
+                  "organization"
                 ],
                 "properties": {
                   "name": {
-                    "type": "string",
-                    "maxLength": 160
+                    "$ref": "#/$defs/text"
                   },
                   "organization": {
                     "$ref": "#/$defs/text"
                   },
-                  "title": {
+                  "description": {
                     "$ref": "#/$defs/text"
                   }
                 }
