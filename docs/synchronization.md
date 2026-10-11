@@ -57,7 +57,7 @@ Service에는 OpenAPI 원문 전체를 저장하고 Endpoint.operation의 `$ref`
 Action 원본의 `spec.endpoint`에 Service.metadata.name 참조·HTTP method/path를 저장하고, 요청/응답 필드 설정은 Page 사용 정의에 저장합니다.
 Action의 `spec.plugins`는 before/after 플러그인 연결과 설정을 저장하며
 `pageActionUsages.plugins`에도 복사합니다. 생략한 단계는 빈 배열입니다.
-history의 events는 수집 범위이며 Action.metadata.name(또는 pageActionUsages.action)을 이력의 actionName으로
+history는 별도 config/events 없이 Action 전체 이력을 기록하며 Action.metadata.name(또는 pageActionUsages.action)을 이력의 actionName으로
 사용합니다. after.history도 Action 시작부터 confirm/endpoint 이벤트를 기록하며 실제 이벤트/실행 요청은
 카탈로그 리소스에 넣지 않습니다. 실제 수집/이력 저장은 실행 서버 책임입니다.
 Action 입력에 Endpoint ID는 없으며 등록 정의와 일치함을 확인한 뒤 DB 연결 identity를 도출합니다.

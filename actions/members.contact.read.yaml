@@ -21,5 +21,3 @@ spec:
           execution: requester
     after:
       - name: history
-        config:
-          events: [confirm, endpoint]

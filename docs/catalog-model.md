@@ -98,8 +98,6 @@ spec:
           execution: requester
     after:
       - name: history
-        config:
-          events: [confirm, endpoint]
 ```
 
 Action의 `metadata.organization`은 선택적인 담당조직 표시입니다. 자동 생성 Service/Endpoint는
@@ -123,7 +121,7 @@ Service.metadata.name 참조와 method/path만 담습니다. 기존 spec 최상�
 | `spec.plugins.before` | 엔드포인트 실행 전 플러그인 배열. 현재 `name: confirm` 지원 |
 | `spec.plugins.after` | 후처리 플러그인 배열. history는 Action 전체 이벤트를 지속 수집/저장 |
 | confirm의 `config` | 필수 확인 대상·필요 인원·실행 방식 |
-| history의 `config` | 필수 events 목록: confirm, endpoint 중 기록할 이벤트 범위 |
+| history 선언 | `name: history`만 지정. config/events 없이 Action 전체 이력 기록 |
 
 플러그인을 사용하지 않으면 `plugins`를 생략합니다. before/after 중 필요한 단계만 작성할 수도
 있습니다. 빈 plugins/단계 배열은 거부합니다. 현재 각 플러그인은 정해진 단계에 한 번만 연결하며,
@@ -178,13 +176,13 @@ metadata.name에 대응하는 식별자입니다. 이 저장소에는 사용자/
 2. before의 confirm이 연결되었으면 count명의 유효 확인이 모일 때까지 대기합니다.
    requester 방식은 충족 후 요청자의 실행 명령을 기다리고 automatic 방식은 충족 시 자동 실행합니다.
    조건 미충족·요청 취소·오류 상태에서는 endpoint를 호출하지 않습니다. 확인 UI는 플러그인 구현에서 결정합니다.
-3. endpoint 호출을 시도하고 결과를 확정합니다. history는 선택된 범위의 이벤트를 발생 시점마다 기록합니다.
+3. endpoint 호출을 시도하고 결과를 확정합니다. history는 해당 Action의 모든 이벤트를 발생 시점마다 기록합니다.
    확인 과정과 API 오류·timeout 등 실패 결과도 포함하며, endpoint를 호출하지 않은 종료도 기록합니다.
 4. history 저장 실패를 이유로 이미 실행한 endpoint를 다시 호출하지 않습니다.
    실행 식별자로 이력 저장을 재시도/중복 방지하고 저장 실패를 별도 상태로 추적합니다.
 
 위 내용은 실행 소비자 계약이며 이 저장소의 스크립트는 확인 UI, API 호출, DB 이력 저장을 실행하지 않습니다.
-confirm.config의 구조/정적 조건과 history.config.events의 허용 값/중복/누락을 카탈로그에서 검증합니다.
+confirm.config의 구조/정적 조건을 검증하며 history에는 name 외 config/events 등의 추가 설정을 거부합니다.
 외부 대상의 존재/소속과 플러그인별 실행 지원 여부는 실행 서버가
 업무 호출 전에 검사해야 하며, 지원하지 않는 플러그인을 무시하고 endpoint를 호출하면 안 됩니다.
 이력의 저장소·보존 기간과 확인 UI는 플러그인 구현 계약에서 정의합니다. 이력의 공통 필드는 아래 계약을 따릅니다.
@@ -197,10 +195,10 @@ confirm.config의 구조/정적 조건과 history.config.events의 허용 값/�
 
 ### History 수집 및 저장 계약
 
-`after`에 `name: history`를 연결하고 `config.events: [confirm, endpoint]`를 지정하면 두 과정의
-**모든 이벤트**를 기록합니다. confirm 또는 endpoint만 선택할 수도 있습니다. 목록은 필수이며
-빈 목록·중복·알 수 없는 범위는 거부합니다. confirm 플러그인이 없는 Action에서도 두 범위를 지정할 수
-있으며, 실제로 발생하지 않은 confirm 이벤트는 만들지 않습니다.
+`after`에 `name: history`만 연결하면 해당 Action의 **모든 이력**을 기록합니다.
+별도 config/events나 범위 선택은 없으며 Action 요청·확인·endpoint 실행·종료 과정이 모두 포함됩니다.
+confirm 플러그인이 없는 Action에서도 history만 연결할 수 있습니다. 실제로 발생하지 않은 confirm
+이벤트는 만들지 않습니다. history를 생략하면 이 플러그인에 의한 이력 저장은 요청하지 않은 것입니다.
 
 history의 after 배치는 후처리 책임을 나타냅니다. endpoint 완료 시 한 번 호출하는 콜백으로 구현하면
 대기 중인 확인이나 endpoint 미실행 이력을 잃으므로, 실행 서버는 Action 진입부터 수집기를 활성화하고
@@ -208,6 +206,7 @@ history의 after 배치는 후처리 책임을 나타냅니다. endpoint 완료 
 
 | 범위 | 기록할 행위/전이 |
 | --- | --- |
+| action | 업무 요청 생성, 권한/입력 검증 결과, 요청 취소, 완료·실패 등 전체 실행 상태 전이 |
 | confirm | 확인 요청 생성, 후보별 확인·거절·철회, count 충족/미충족 전이, 요청 취소·만료·오류 |
 | endpoint | 요청자의 실행 명령 또는 자동 실행 예약, 호출 시작, 성공·API 오류·timeout·네트워크 오류, 호출 생략/차단 |
 

@@ -13,7 +13,7 @@ def confirm_plugin():
 
 
 def history_plugin():
-    return {'name': 'history', 'config': {'events': ['confirm', 'endpoint']}}
+    return {'name': 'history'}
 
 
 class ActionPluginTests(Fixture):
@@ -49,7 +49,7 @@ class ActionPluginTests(Fixture):
             self.assertEqual(usage['plugins'], plugins)
             self.assertEqual(usage['effective'], previous['effective'])
         self.assertEqual(snapshot, build_snapshot(self.root, verify_sources=False))
-        usages[0]['plugins']['after'][0]['config']['events'].pop()
+        usages[0]['plugins']['after'].clear()
         self.assertEqual(usages[1]['plugins'], plugins)
         self.assertEqual(action['spec']['plugins'], plugins)
 
@@ -154,30 +154,23 @@ class ActionPluginTests(Fixture):
         self.set_plugins({'before': [plugin]})
         self.invalid('count exceeds pool user nicknames')
 
-    def test_history_event_selection_is_preserved_without_confirm_plugin(self):
-        for events in (['confirm'], ['endpoint'], ['confirm', 'endpoint']):
-            with self.subTest(events=events):
-                plugin = {'name': 'history', 'config': {'events': events}}
-                self.set_plugins({'after': [plugin]})
-                snapshot = build_snapshot(self.root)
-                for usage in self.usages(snapshot):
-                    self.assertEqual(usage['plugins'], {'before': [], 'after': [plugin]})
-                self.assertEqual(snapshot, build_snapshot(self.root, verify_sources=False))
+    def test_history_needs_no_configuration_or_confirm_plugin(self):
+        self.set_plugins({'after': [history_plugin()]})
+        snapshot = build_snapshot(self.root)
+        for usage in self.usages(snapshot):
+            self.assertEqual(usage['plugins'], {'before': [], 'after': [{'name': 'history'}]})
+        self.assertEqual(snapshot, build_snapshot(self.root, verify_sources=False))
 
-    def test_history_rejects_invalid_events_and_overridden_action_identity(self):
-        invalid = [None, {}, {'events': []}, {'events': 'confirm'},
-                   {'events': ['confirm', 'confirm']}, {'events': ['unknown']},
-                   {'events': ['endpoint'], 'actionName': 'another.action'},
-                   {'events': ['endpoint'], 'groupBy': 'endpoint'},
-                   {'events': ['endpoint'], 'actor': False}]
-        for config in invalid:
-            with self.subTest(config=config):
-                self.set_plugins({'after': [{'name': 'history', 'config': config}]})
+    def test_history_rejects_event_filters_and_overridden_action_identity(self):
+        extras = [{'config': value} for value in (None, {}, {'events': ['confirm', 'endpoint']},
+                                                 {'events': ['endpoint']})]
+        extras += [{'events': ['endpoint']}, {'actionName': 'another.action'},
+                   {'groupBy': 'endpoint'}, {'actor': False}]
+        for extra in extras:
+            with self.subTest(extra=extra):
+                self.set_plugins({'after': [{'name': 'history', **extra}]})
                 with self.assertRaises(CatalogError):
                     build_snapshot(self.root)
-        self.set_plugins({'after': [{'name': 'history'}]})
-        with self.assertRaises(CatalogError):
-            build_snapshot(self.root)
 
     def test_history_action_binding_follows_metadata_name_not_endpoint(self):
         self.set_plugins({'after': [history_plugin()]})
