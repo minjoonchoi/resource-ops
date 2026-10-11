@@ -101,7 +101,7 @@ def parameters_by_key(parameters, location):
         key = parameter_key(parameter)
         require(key not in result, f"{location}: duplicate parameter {key}")
         require(key[0] != "header" or key[1] not in RESERVED_HEADERS,
-                f"{location}: transport/auth header {key[1]} cannot be an action parameter")
+                f"{location}: transport/auth header {key[1]} cannot be a catalog parameter")
         result[key] = parameter
     return result
 
@@ -182,30 +182,46 @@ def validate_endpoint(resource):
         validate_value_schema(response["schema"], f"{location}.responses.{status}")
 
 
-def validate_action(resource, endpoint):
-    location = f"Action/{resource['metadata']['name']}"
-    spec, contract = resource["spec"], endpoint["spec"]
+def resolve_page_action(page_name, usage, endpoint):
+    """Validate sparse overrides and resolve an independent Page/Action contract."""
+    location = f"Page/{page_name}.actions[{usage['action']}]"
+    overrides, contract = usage.get("overrides", {}), endpoint["spec"]
     available = parameters_by_key(contract["request"]["parameters"], location)
-    bindings = parameters_by_key(spec["request"]["parameters"], location)
-    require(set(bindings) <= set(available), f"{location}: binding references an unknown endpoint parameter")
-    required = {key for key, item in available.items() if item["required"]}
-    require(required <= set(bindings), f"{location}: required endpoint parameter has no binding")
-    for key, binding in bindings.items():
+    changed = parameters_by_key(overrides.get("request", {}).get("parameters", []), location)
+    require(set(changed) <= set(available), f"{location}: override references an unknown endpoint parameter")
+    for key, binding in changed.items():
         schema = available[key]["schema"]
         if "value" in binding:
             require(Draft202012Validator(schema).is_valid(binding["value"]),
                     f"{location}: constant for {key} violates endpoint schema")
-        elif binding["source"] != "input":
+        else:
             require(schema["type"] == "string", f"{location}: subject sources require a string parameter")
-    body, endpoint_body = spec["request"].get("body"), contract["request"].get("body")
-    require(body is None or endpoint_body is not None, f"{location}: endpoint has no request body")
-    require(endpoint_body is None or not endpoint_body["required"] or body is not None,
-            f"{location}: required endpoint body has no binding")
-    require(set(spec["responses"]) == set(contract["responses"]),
-            f"{location}: response statuses must exactly match the endpoint contract")
-    for status, projection in spec["responses"].items():
+    responses = overrides.get("responses", {})
+    require(set(responses) <= set(contract["responses"]),
+            f"{location}: override references an unknown endpoint response status")
+    for status, projection in responses.items():
         for pointer in projection["fields"]:
             leaf_schema(contract["responses"][status]["schema"], pointer, f"{location}.responses.{status}")
+
+    effective = copy.deepcopy(contract)
+    for parameter in effective["request"]["parameters"]:
+        binding = changed.get(parameter_key(parameter), {"source": "input"})
+        # Preserve Endpoint names, types and required flags; only the value source changes.
+        if "value" in binding:
+            parameter["value"] = copy.deepcopy(binding["value"])
+        else:
+            parameter["source"] = binding["source"]
+    if "body" in effective["request"]:
+        effective["request"]["body"]["source"] = "input"
+    for status, projection in responses.items():
+        # An explicit fields array replaces the projection; never union it with all fields.
+        effective["responses"][status]["fields"] = copy.deepcopy(projection["fields"])
+    return {
+        "page": page_name,
+        "action": usage["action"],
+        "endpoint": endpoint["metadata"]["name"],
+        "effective": effective,
+    }
 
 
 def build_snapshot(root: Path):
@@ -239,9 +255,12 @@ def build_snapshot(root: Path):
 
     relations = []
 
-    def link(source, relation, target_kind, target_name):
+    def link(source, relation, target_kind, target_name, overrides=None):
         require((target_kind, target_name) in resources, f"{source}: missing reference {target_kind}/{target_name}")
-        relations.append({"from": source, "type": relation, "to": f"{target_kind}/{target_name}"})
+        edge = {"from": source, "type": relation, "to": f"{target_kind}/{target_name}"}
+        if overrides is not None:
+            edge["overrides"] = copy.deepcopy(overrides)
+        relations.append(edge)
 
     routes = set()
     page_routes = set()
@@ -258,19 +277,25 @@ def build_snapshot(root: Path):
             routes.add(route)
         elif kind == "Action":
             link(source, "invokes", "Endpoint", spec["endpoint"])
-            # Endpoint semantic validation precedes all Action checks below.
         elif kind == "Page":
             require(spec["path"] not in page_routes, f"{source}: duplicate page path")
             page_routes.add(spec["path"])
-            for action in spec["actions"]:
-                link(source, "uses", "Action", action)
+            actions = set()
+            for usage in spec["actions"]:
+                action = usage["action"]
+                require(action not in actions, f"{source}: duplicate action usage {action}")
+                actions.add(action)
+                link(source, "uses", "Action", action, usage.get("overrides"))
             if "parent" in spec:
                 link(source, "childOf", "Page", spec["parent"])
 
+    page_action_usages = []
     for (kind, name), resource in sorted(resources.items()):
-        if kind == "Action":
-            validate_action(resource, resources["Endpoint", resource["spec"]["endpoint"]])
         if kind == "Page":
+            for usage in resource["spec"]["actions"]:
+                action = resources["Action", usage["action"]]
+                endpoint = resources["Endpoint", action["spec"]["endpoint"]]
+                page_action_usages.append(resolve_page_action(name, usage, endpoint))
             visited, current = set(), name
             while current is not None:
                 require(current not in visited, f"Page/{name}: parent cycle through {current}")
@@ -283,6 +308,7 @@ def build_snapshot(root: Path):
         "metadata": manifest["metadata"],
         "resources": [resources[key] for key in sorted(resources)],
         "relations": sorted(relations, key=lambda edge: (edge["from"], edge["type"], edge["to"])),
+        "pageActionUsages": sorted(page_action_usages, key=lambda usage: (usage["page"], usage["action"])),
     }
     canonical = json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
     snapshot["contentSha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()

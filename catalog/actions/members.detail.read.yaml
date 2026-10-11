@@ -5,13 +5,3 @@ metadata:
   title: 회원 기본 정보 보기
 spec:
   endpoint: members.get
-  request:
-    parameters:
-      - in: path
-        name: memberId
-        source: input
-  responses:
-    "200":
-      fields: [/id, /nickname, /organizationCode]
-    "404":
-      fields: [/code, /message]

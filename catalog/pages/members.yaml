@@ -6,5 +6,21 @@ metadata:
 spec:
   path: /members
   actions:
-    - members.directory.list
-    - members.detail.read
+    - action: members.directory.list
+      overrides:
+        request:
+          parameters:
+            - in: query
+              name: organizationCode
+              source: subject.organization.code
+            - in: query
+              name: size
+              value: 20
+        responses:
+          "200":
+            fields: [/items/*/id, /items/*/nickname, /total]
+    - action: members.detail.read
+      overrides:
+        responses:
+          "200":
+            fields: [/id, /nickname]

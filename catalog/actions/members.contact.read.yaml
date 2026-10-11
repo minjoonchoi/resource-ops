@@ -6,13 +6,3 @@ metadata:
   description: 기본 정보 조회와 같은 Endpoint를 사용하지만 별도 Action 권한으로 제어합니다.
 spec:
   endpoint: members.get
-  request:
-    parameters:
-      - in: path
-        name: memberId
-        source: input
-  responses:
-    "200":
-      fields: [/id, /email]
-    "404":
-      fields: [/code, /message]

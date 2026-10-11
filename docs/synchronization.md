@@ -23,8 +23,8 @@ manifest와 그 안의 모든 리소스 문서를 입력으로 받습니다.
 어떤 파일도 다른 commit SHA에서 섞어 읽지 않습니다.
 
 1. manifest, YAML 문법, `apiVersion`, 문서 스키마를 검증합니다.
-2. 파일 목록·identity·참조·Endpoint 계약·Action 범위·Page 계층을 검증합니다.
-3. kind/name으로 리소스를 정렬하고 참조에서 네 가지 연결을 도출합니다.
+2. 파일 목록·identity·참조·Endpoint 계약·Page별 override·Page 계층을 검증합니다.
+3. kind/name으로 리소스를 정렬하고 참조에서 네 가지 연결과 Page별 최종 사용 계약을 도출합니다.
 4. 현재 DB 상태와 비교하여 create/update/deactivate/unchanged 계획을 만듭니다.
 5. DB 외부 참조(예: 활성 정책)가 삭제 예정 리소스를 사용하면 전체 반영을 차단하고 충돌을 보고합니다.
 
@@ -38,15 +38,23 @@ manifest에 등록하지 않은 YAML도 잡습니다. 어떤 파일이든 읽기
 | `apiVersion`, `kind` | `resource-ops/v1`, `CatalogSnapshot` |
 | `metadata` | 카탈로그의 이름·제목·설명 |
 | `resources` | kind/name 순서의 검증된 원본 리소스 |
-| `relations` | from/type/to 순서의 파생 연결 |
+| `relations` | from/type/to 순서의 파생 연결, uses 관계는 overrides 속성 보존 |
+| `pageActionUsages` | page/action 순서의 최종 사용 계약: page, action, endpoint, effective |
 | `contentSha256` | hash 필드 자체를 제외한 정규화 문서의 SHA-256 |
 
 hash 입력은 UTF-8 JSON이며 object key를 정렬하고 불필요한 공백 없이 직렬화합니다.
-resources와 relations는 정렬하지만 각 리소스 내부 배열 순서는 보존합니다.
+resources, relations, pageActionUsages는 정렬하지만 각 리소스 내부 배열 순서는 보존합니다.
 hash는 이 Python CLI의 동일 구현 내 변경 비교에 사용할 수 있습니다.
 다른 언어 구현은 JSON 숫자/Unicode 직렬화 차이를 고려해야 하며 이 규칙을 검증 없이 범용 JCS로 간주하지 않습니다.
 revision은 Git provenance, hash는 내용 비교 보조 정보입니다. 둘을 같은 값으로 취급하지 않습니다.
 DB drift 확인 없이 `sourceRevision` 또는 hash가 같다는 이유만으로 항상 비교를 생략하지 않습니다.
+
+Page의 Action 사용 정의가 override의 원본입니다. `uses.overrides`와 `pageActionUsages`는
+거기서 도출한 데이터이며 별도의 편집 원본으로 사용하지 않습니다.
+Action에는 endpoint 참조만 저장하고, 요청/응답 필드 설정은 Page 사용 정의에 저장합니다.
+사용 계약의 key는 `(sourceId, catalogName, page, action)`입니다.
+Endpoint나 Action 참조가 변경되면 연결된 모든 Page의 effective를 다시 계산합니다.
+변경된 Page 파일만 부분 처리하면 상속 데이터가 오래된 상태로 남으므로 전체 snapshot에서 재계산합니다.
 
 ## 트랜잭션과 동시 실행
 
@@ -56,9 +64,9 @@ DB drift 확인 없이 `sourceRevision` 또는 hash가 같다는 이유만으로
 2. 계획 작성 시 관측한 generation/observedRevision이 현재 상태와 같은지 확인합니다.
 3. 새 desiredRevision이 예약되었으면 오래된 작업의 반영을 취소하고 최신 snapshot으로 다시 계획합니다.
 4. Server → Endpoint → Action → Page 순서로 upsert합니다. Page parent FK는 모든 Page upsert 뒤 연결합니다.
-5. 이 source/catalog가 소유한 연결만 새 snapshot과 일치하도록 교체합니다.
+5. 이 source/catalog가 소유한 연결과 Page별 사용 계약을 새 snapshot과 일치하도록 교체합니다.
 6. snapshot에서 제거된 리소스를 비활성화하고 처리된 sourceRevision/hash/통계를 기록합니다.
-7. 리소스·연결·observedRevision·성공 이력을 함께 commit합니다.
+7. 리소스·연결·Page별 사용 계약·observedRevision·성공 이력을 함께 commit합니다.
 
 동일 commit 재실행은 중복 리소스나 관계를 만들지 않아야 합니다. 위 소유권 identity와
 `(sourceId, catalogName, from, type, to)`에 unique constraint를 둡니다.
@@ -86,7 +94,7 @@ DB 외부의 활성 정책 등에서 삭제 대상을 참조하면 자동 cascad
 | 상황 | 처리 |
 | --- | --- |
 | HTTP 오류, timeout, 파일 누락, YAML/스키마 오류 | DB 변경 없이 failed, 정상 revision 유지 |
-| 참조 오류, 중복 경로, Action 계약 불일치 | DB 변경 없이 failed, 경로와 원인 기록 |
+| 참조 오류, 중복 경로, Page override 불일치 | DB 변경 없이 failed, 경로와 원인 기록 |
 | 활성 정책 등 외부 참조로 삭제 불가 | DB 변경 없이 blocked, 영향 대상 기록 |
 | DB 오류 또는 충돌 | 전체 rollback 후 새 snapshot/현재 상태로 재계획 |
 | 같은 revision 재시도 | DB 실제 상태 비교 후 idempotent 반영 또는 no-op |
@@ -113,5 +121,6 @@ force push나 DB 수동 수정 없이 Git 이력과 적용 이력을 연결합�
 
 - 동일 SHA 전체 조회, 실패 시 무변경, 같은 commit 재시도, DB drift 복구를 통합 검증합니다.
 - 연결 제거와 리소스 비활성화의 원자성, 외부 참조 차단, 두 worker의 경합을 검증합니다.
-- Action의 subject 주입·응답 projection은 DB 적재와 별개로 실행 서버에서 검증합니다.
+- Page별 상속·subject 주입·응답 projection은 DB 적재와 별개로 실행 서버에서 검증합니다.
+- 같은 Action의 Page별 override가 섞이지 않는지, 변경하지 않은 요청/응답을 상속하는지 검증합니다.
 - snapshot/diff/오류를 운영자가 확인할 수 있어야 합니다. 비밀값이나 사용자 실제 데이터는 이력에 기록하지 않습니다.

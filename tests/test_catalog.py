@@ -31,6 +31,15 @@ class CatalogTests(unittest.TestCase):
         edit(value)
         self.write(path, value)
 
+    def change_usage(self, page, action, edit):
+        self.change(f"catalog/pages/{page}.yaml", lambda document: edit(next(
+            usage for usage in document["spec"]["actions"] if usage["action"] == action
+        )))
+
+    def effective(self, snapshot, page, action):
+        return next(usage["effective"] for usage in snapshot["pageActionUsages"]
+                    if usage["page"] == page and usage["action"] == action)
+
     def invalid(self, message):
         with self.assertRaisesRegex(CatalogError, message):
             build_snapshot(self.root)
@@ -39,6 +48,7 @@ class CatalogTests(unittest.TestCase):
         snapshot = build_snapshot(self.root)
         self.assertEqual(len(snapshot["resources"]), 8)
         self.assertEqual(len(snapshot["relations"]), 10)
+        self.assertEqual(len(snapshot["pageActionUsages"]), 4)
         self.assertIn({"from": "Action/members.contact.read", "type": "invokes", "to": "Endpoint/members.get"}, snapshot["relations"])
         self.assertEqual(len(snapshot["contentSha256"]), 64)
 
@@ -88,37 +98,55 @@ class CatalogTests(unittest.TestCase):
         self.change("catalog/pages/members.yaml", lambda d: d["spec"].update(parent="member-detail"))
         self.invalid("parent cycle")
 
-    def test_required_parameter_needs_binding(self):
-        self.change("catalog/actions/members.directory.list.yaml", lambda d: d["spec"]["request"]["parameters"].pop(0))
-        self.invalid("required endpoint parameter")
+    def test_unmodified_required_parameter_inherits_input(self):
+        self.change_usage("members", "members.directory.list", lambda u: u["overrides"]["request"]["parameters"].pop(0))
+        effective = self.effective(build_snapshot(self.root), "members", "members.directory.list")
+        parameter = next(p for p in effective["request"]["parameters"] if p["name"] == "organizationCode")
+        self.assertEqual(parameter["source"], "input")
+        self.assertTrue(parameter["required"])
+
+    def test_sparse_request_merges_by_parameter_identity(self):
+        effective = self.effective(build_snapshot(self.root), "members", "members.directory.list")
+        params = {p["name"]: p for p in effective["request"]["parameters"]}
+        self.assertEqual(params["organizationCode"]["source"], "subject.organization.code")
+        self.assertEqual(params["size"]["value"], 20)
+        self.assertNotIn("source", params["size"])
+        self.assertEqual(params["size"]["schema"]["maximum"], 100)
+        self.assertEqual(params["page"]["source"], "input")
+        self.assertFalse(params["page"]["required"])
 
     def test_constant_must_match_endpoint_range(self):
-        self.change("catalog/actions/members.directory.list.yaml", lambda d: d["spec"]["request"]["parameters"][2].update(value=101))
+        self.change_usage("members", "members.directory.list", lambda u: u["overrides"]["request"]["parameters"][1].update(value=101))
         self.invalid("constant.*violates")
 
     def test_unknown_request_parameter(self):
-        self.change("catalog/actions/members.detail.read.yaml", lambda d: d["spec"]["request"]["parameters"][0].update(name="member_id"))
+        self.change_usage("members", "members.directory.list", lambda u: u["overrides"]["request"]["parameters"][0].update(name="organization_code"))
         self.invalid("unknown endpoint parameter")
 
     def test_source_and_value_are_mutually_exclusive(self):
-        self.change("catalog/actions/members.detail.read.yaml", lambda d: d["spec"]["request"]["parameters"][0].update(value="123"))
+        self.change_usage("members", "members.directory.list", lambda u: u["overrides"]["request"]["parameters"][0].update(value="123"))
         self.invalid("valid under each")
 
     def test_unknown_subject_source(self):
-        self.change("catalog/actions/members.detail.read.yaml", lambda d: d["spec"]["request"]["parameters"][0].update(source="subject.anything"))
+        self.change_usage("members", "members.directory.list", lambda u: u["overrides"]["request"]["parameters"][0].update(source="subject.anything"))
         self.invalid("not one of")
 
     def test_response_field_must_exist(self):
-        self.change("catalog/actions/members.directory.list.yaml", lambda d: d["spec"]["responses"]["200"].update(fields=["/items/*/not-found"]))
+        self.change_usage("members", "members.directory.list", lambda u: u["overrides"]["responses"]["200"].update(fields=["/items/*/not-found"]))
         self.invalid("does not exist")
 
     def test_container_projection_is_forbidden(self):
-        self.change("catalog/actions/members.directory.list.yaml", lambda d: d["spec"]["responses"]["200"].update(fields=["/items"]))
+        self.change_usage("members", "members.directory.list", lambda u: u["overrides"]["responses"]["200"].update(fields=["/items"]))
         self.invalid("selects a container")
 
-    def test_response_statuses_must_cover_error_contract(self):
-        self.change("catalog/actions/members.detail.read.yaml", lambda d: d["spec"]["responses"].pop("404"))
-        self.invalid("response statuses")
+    def test_unmodified_error_response_inherits_endpoint(self):
+        effective = self.effective(build_snapshot(self.root), "members", "members.detail.read")
+        endpoint = self.read("catalog/endpoints/members.get.yaml")["spec"]
+        self.assertEqual(effective["responses"]["404"], endpoint["responses"]["404"])
+
+    def test_override_response_status_must_exist(self):
+        self.change_usage("members", "members.detail.read", lambda u: u["overrides"]["responses"].update({"201": {"fields": ["/id"]}}))
+        self.invalid("unknown endpoint response status")
 
     def test_numeric_status_keys_are_rejected(self):
         path = self.root / "catalog/endpoints/members.get.yaml"
@@ -164,20 +192,86 @@ class CatalogTests(unittest.TestCase):
         self.change("catalog/endpoints/members.get.yaml", lambda d: d["spec"]["responses"]["200"]["schema"].update({"$ref": "https://example.invalid/schema"}))
         self.invalid("Additional properties")
 
-    def test_required_json_body_and_binding(self):
+    def test_required_json_body_inherits_without_override(self):
         endpoint = "catalog/endpoints/members.get.yaml"
         self.change(endpoint, lambda d: d["spec"]["request"].update(body={"required": True, "schema": {"type": "string"}}))
-        self.invalid("required endpoint body")
-        for name in ["members.detail.read", "members.contact.read"]:
-            self.change(f"catalog/actions/{name}.yaml", lambda d: d["spec"]["request"].update(body={"source": "input"}))
-        build_snapshot(self.root)
+        snapshot = build_snapshot(self.root)
+        for page, action in [("members", "members.detail.read"), ("member-detail", "members.contact.read")]:
+            body = self.effective(snapshot, page, action)["request"]["body"]
+            self.assertEqual(body, {"required": True, "schema": {"type": "string"}, "source": "input"})
 
     def test_pointer_escaping_preserves_wire_field_names(self):
         def add_field(d):
             d["spec"]["responses"]["200"]["schema"]["properties"]["test/~field"] = {"type": "string"}
         self.change("catalog/endpoints/members.get.yaml", add_field)
-        self.change("catalog/actions/members.detail.read.yaml", lambda d: d["spec"]["responses"]["200"].update(fields=["/test~1~0field"]))
+        self.change_usage("members", "members.detail.read", lambda u: u["overrides"]["responses"]["200"].update(fields=["/test~1~0field"]))
         build_snapshot(self.root)
+
+    def test_action_has_no_request_or_response_contract(self):
+        for field in ["request", "responses"]:
+            with self.subTest(field=field):
+                path = "catalog/actions/members.detail.read.yaml"
+                self.change(path, lambda d: d["spec"].update({field: {}}))
+                self.invalid("Additional properties")
+                self.change(path, lambda d: d["spec"].pop(field))
+
+    def test_page_action_without_overrides_inherits_entire_endpoint(self):
+        self.change_usage("members", "members.detail.read", lambda u: u.pop("overrides"))
+        snapshot = build_snapshot(self.root)
+        effective = self.effective(snapshot, "members", "members.detail.read")
+        endpoint = self.read("catalog/endpoints/members.get.yaml")["spec"]
+        self.assertEqual(effective["responses"], endpoint["responses"])
+        self.assertEqual(effective["method"], endpoint["method"])
+        self.assertEqual(effective["path"], endpoint["path"])
+        self.assertEqual(effective["request"]["parameters"][0]["source"], "input")
+        action = next(r for r in snapshot["resources"] if r["kind"] == "Action" and r["metadata"]["name"] == "members.detail.read")
+        self.assertEqual(action["spec"], {"endpoint": "members.get"})
+
+    def test_same_action_has_independent_page_overrides(self):
+        snapshot = build_snapshot(self.root)
+        listing = self.effective(snapshot, "members", "members.detail.read")
+        detail = self.effective(snapshot, "member-detail", "members.detail.read")
+        self.assertEqual(listing["responses"]["200"]["fields"], ["/id", "/nickname"])
+        self.assertEqual(detail["responses"]["200"]["fields"], ["/id", "/nickname", "/organizationCode"])
+        listing["responses"]["200"]["fields"].append("/email")
+        self.assertNotIn("/email", detail["responses"]["200"]["fields"])
+        endpoint = next(r for r in snapshot["resources"] if r["kind"] == "Endpoint" and r["metadata"]["name"] == "members.get")
+        self.assertNotIn("fields", endpoint["spec"]["responses"]["200"])
+
+    def test_uses_relation_preserves_override_payload(self):
+        snapshot = build_snapshot(self.root)
+        edge = next(r for r in snapshot["relations"] if r["from"] == "Page/members" and r["to"] == "Action/members.directory.list")
+        usage = self.read("catalog/pages/members.yaml")["spec"]["actions"][0]
+        self.assertEqual(edge["overrides"], usage["overrides"])
+
+    def test_duplicate_action_with_different_overrides_is_ambiguous(self):
+        self.change("catalog/pages/members.yaml", lambda d: d["spec"]["actions"].append({"action": "members.detail.read"}))
+        self.invalid("duplicate action usage")
+
+    def test_missing_page_action_reference(self):
+        self.change_usage("members", "members.detail.read", lambda u: u.update(action="missing"))
+        self.invalid("missing reference Action/missing")
+
+    def test_empty_override_payloads_are_rejected(self):
+        for overrides in [{}, {"request": {"parameters": []}}, {"responses": {}}]:
+            with self.subTest(overrides=overrides):
+                self.change_usage("members", "members.detail.read", lambda u: u.update(overrides=overrides))
+                self.invalid("non-empty")
+
+    def test_redundant_input_source_is_omitted_in_yaml(self):
+        self.change_usage("members", "members.directory.list", lambda u: u["overrides"]["request"]["parameters"][0].update(source="input"))
+        self.invalid("not one of")
+
+    def test_endpoint_route_cannot_be_overridden_by_page(self):
+        self.change_usage("members", "members.detail.read", lambda u: u["overrides"].update(path="/other"))
+        self.invalid("Additional properties")
+
+    def test_endpoint_change_updates_all_derived_usages(self):
+        self.change("catalog/endpoints/members.get.yaml", lambda d: d["spec"]["request"]["parameters"][0]["schema"].update(minLength=5))
+        snapshot = build_snapshot(self.root)
+        for usage in snapshot["pageActionUsages"]:
+            if usage["endpoint"] == "members.get":
+                self.assertEqual(usage["effective"]["request"]["parameters"][0]["schema"]["minLength"], 5)
 
     def test_renaming_is_an_explicit_identity_change(self):
         self.change("catalog/pages/members.yaml", lambda d: d["metadata"].update(name="renamed"))

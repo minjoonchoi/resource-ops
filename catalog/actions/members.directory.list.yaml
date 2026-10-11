@@ -2,22 +2,6 @@ apiVersion: resource-ops/v1
 kind: Action
 metadata:
   name: members.directory.list
-  title: 내 조직의 회원 목록 보기
+  title: 회원 목록 조회
 spec:
   endpoint: members.list
-  request:
-    parameters:
-      - in: query
-        name: organizationCode
-        source: subject.organization.code
-      - in: query
-        name: page
-        source: input
-      - in: query
-        name: size
-        value: 20
-  responses:
-    "200":
-      fields: [/items/*/id, /items/*/nickname, /total]
-    "400":
-      fields: [/code, /message]

@@ -73,6 +73,7 @@ curl --fail --silent --show-error \
 
 - `resource-catalog/default/master`에서 `version`과 `resourceOps.manifest` marker를 확인합니다.
 - 같은 SHA의 manifest와 파일 8개를 읽어 참조 10개가 만들어지는지 확인합니다.
+- Page별 사용 계약 4개를 도출하고 동일 Action의 override가 각 Page에 독립적으로 적용되는지 확인합니다.
 - master가 변경되어도 이전 SHA 조회 결과가 그대로 유지되는지 확인합니다.
 - 존재하지 않는 파일·label, 잘못된 YAML, 네트워크 장애가 DB 변경으로 이어지지 않는지 확인합니다.
 - consumer는 지원하는 `apiVersion`의 스키마/검증기를 배포에 포함하고 알 수 없는 버전은 거부합니다.

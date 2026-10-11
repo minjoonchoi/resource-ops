@@ -12,16 +12,6 @@ metadata:
   title: 회원 기본 정보 보기
 spec:
   endpoint: members.get
-  request:
-    parameters:
-      - in: path
-        name: memberId
-        source: input
-  responses:
-    "200":
-      fields: [/id, /nickname, /organizationCode]
-    "404":
-      fields: [/code, /message]
 ```
 
 - 리소스의 안정적 식별자는 `(kind, metadata.name)`입니다. 표시용 `title`과 선택 `description`은 변경 가능합니다.
@@ -62,46 +52,92 @@ scalar 타입, `required`, `enum`, `const`, 숫자 범위, 문자열 길이, 배
 컨테이너의 required 목록은 실제 선언된 property만 가리킬 수 있습니다.
 확장 시 소비자가 처리할 수 없는 키워드를 조용히 통과시키지 않습니다.
 
-## Action의 요청 생성
+## Action과 Page별 사용 정의
 
-Action은 Endpoint의 method/path/서버/원본 schema를 복제하지 않습니다.
-`spec.endpoint`는 정확히 하나의 Endpoint를 가리킵니다.
-여러 Action이 같은 Endpoint를 업무별로 재사용할 수 있습니다.
+Action의 `spec`에는 `endpoint` 참조만 있습니다. 요청·응답 필드 설정은 허용하지 않습니다.
+여러 Action이 같은 Endpoint를 업무/권한 단위로 참조할 수 있습니다.
+실제 화면에서 어떻게 사용할지는 `Page.spec.actions[]`에 정의합니다.
 
-`request.parameters`는 Endpoint parameter를 골라 값을 얻는 방법을 지정합니다.
+```yaml
+apiVersion: resource-ops/v1
+kind: Page
+metadata:
+  name: members
+  title: 회원 관리
+spec:
+  path: /members
+  actions:
+    - action: members.directory.list
+      overrides:
+        request:
+          parameters:
+            - in: query
+              name: organizationCode
+              source: subject.organization.code
+            - in: query
+              name: size
+              value: 20
+        responses:
+          "200":
+            fields: [/items/*/id, /items/*/nickname, /total]
+    - action: members.detail.read
+```
+
+이 예제는 목록 조회의 조직코드·size·200 응답만 변경합니다.
+page parameter와 400 응답은 Endpoint 그대로이며 별도 입력 정의가 필요 없습니다.
+두 번째 사용 정의는 override가 없어 `members.get`의 원본 요청·응답 전체를 상속합니다.
+실제 카탈로그 파일에는 같은 Action을 Page별로 다르게 선택하는 예제가 들어 있습니다.
+
+| 위치 | 적용 규칙 |
+| --- | --- |
+| `overrides` 생략 | Endpoint 원본 계약 전체 상속 |
+| `overrides.request.parameters` | `(in, name)`에 해당하는 parameter의 값 출처만 교체 |
+| request parameter 생략 | 원본 required/type/range 유지, 호출자 입력 사용 |
+| request body | Endpoint 원본 schema/required 유지, 호출자 입력 사용 |
+| `overrides.responses."200".fields` | 해당 상태코드의 응답 필드 선택 목록을 교체 |
+| 응답 상태코드 생략 | 해당 상태코드의 원본 응답 전체 상속 |
+
+배열 전체를 재귀 merge하거나 `fields`를 원본 필드와 합집합으로 합치지 않습니다.
+변경하는 parameter/status만 지정하며, 생략은 삭제를 뜻하지 않습니다.
+빈 `overrides`, 빈 parameter/response override는 쓰지 않고 해당 키를 생략합니다.
+Page override로 Endpoint의 참조·서버·method·path·원본 schema를 바꿀 수 없습니다.
+그 변경은 Endpoint 자체를 수정하거나 다른 Endpoint를 참조하는 Action으로 표현합니다.
+
+## Page override의 요청 생성
+
+`overrides.request.parameters`에서 다음과 같이 기본 호출자 입력을 변경할 수 있습니다.
 
 | 표현 | 의미 |
 | --- | --- |
-| `source: input` | 호출자가 제공하는 해당 parameter 값 |
 | `source: subject.id` | 인증된 주체의 문자열 ID |
 | `source: subject.email` | 인증된 주체의 이메일 |
 | `source: subject.nickname` | 인증된 주체의 닉네임 |
 | `source: subject.organization.code` | 요청 맥락에서 검증된 주체의 조직코드 하나 |
 | `value: 20` | 카탈로그에 정의한 고정값 |
 
-`source`와 `value` 중 하나만 지정합니다. 표현식이나 `${...}` 문법은 사용하지 않습니다.
-복수 조직 사용자는 어떤 조직을 선택할지 인증/권한 계층이 확정해야 하며 임의로 첫 조직을 선택하지 않습니다.
-문자열 subject 값만 지원합니다. 주체 필드가 없거나 타입/제약이 맞지 않으면 호출을 거부합니다.
+`source`와 `value` 중 하나만 지정합니다. `source: input`은 기본 동작이므로 원본 YAML에서는 생략합니다.
+표현식이나 `${...}` 문법은 사용하지 않습니다. header 이름은 대소문자를 구분하지 않고 매칭합니다.
+원본에 없는 parameter, 중복 override, 타입/범위를 벗어난 고정값은 검증 실패입니다.
+복수 조직 사용자의 조직 선택은 인증/권한 계층이 확정합니다. 문자열 subject 값만 지원합니다.
+주체 값이 없거나 원본 제약에 맞지 않으면 실행 서버가 호출을 거부합니다.
 
 실행 서버는 다음 순서를 준수해야 합니다. 이 저장소의 CLI는 실행을 대신하지 않습니다.
 
-1. 인증·Action 허용·조건을 확인하고 신뢰할 수 있는 subject context를 확보합니다.
-2. `source: input`으로 선언한 값만 사용자 입력에서 읽습니다.
-3. subject 주입과 고정값은 서버에서 생성합니다. 동일 이름의 사용자 입력으로 덮어쓸 수 없습니다.
-4. 선언되지 않은 parameter는 upstream에 전달하지 않습니다. 거부 응답을 권장하며 묵시적 passthrough는 금지합니다.
-5. Endpoint의 required/type/range를 최종 생성 값에 검증하고 요청을 보냅니다.
+1. 인증·Page 접근·Action 허용·조건을 검증하고 등록된 `(Page, Action)` 사용 정의를 찾습니다.
+2. Endpoint와 해당 Page의 override를 합성합니다. 클라이언트가 전송한 override는 사용하지 않습니다.
+3. 원본 parameter 중 override가 없는 값은 호출자 입력으로 받고, 주입/고정값은 서버에서 생성합니다.
+4. 주입/고정값은 동일 이름의 사용자 입력으로 덮어쓸 수 없습니다. 원본에 없는 입력은 upstream에 전달하지 않습니다.
+5. 최종 요청에 Endpoint의 required/type/range/body schema를 검증하고 호출합니다.
 
-Endpoint의 required parameter는 Action에서 반드시 값을 생성해야 합니다.
-선택 parameter는 생략할 수 있으며, `source: input`인 선택 parameter의 입력이 없으면 upstream에서도 생략합니다.
-body는 `request.body: {source: input}`을 명시한 경우에만 원본 Endpoint schema 전체를 사용합니다.
-필수 body를 생략할 수 없습니다. **body 내부 필드별 주입·부분 수정은 현재 v1에 포함하지 않습니다.**
+필수 parameter와 필수 body는 override가 없어도 원본 계약에 따라 호출자가 제공해야 합니다.
+선택 parameter/body의 입력이 없으면 upstream에서도 생략합니다.
+**body 내부 필드별 주입·부분 수정은 현재 v1에 포함하지 않습니다.**
 
-## Action의 응답 필드 선택
+## Page override의 응답 필드 선택
 
-`responses`에는 Endpoint에 정의된 모든 상태코드의 처리 범위를 명시합니다.
-성공 응답뿐 아니라 오류 응답에도 필드 선택을 적용합니다.
-정의하지 않은 상태코드나 원본 schema와 맞지 않는 응답은 upstream 원문을 그대로 반환하지 않고
-실행 서버가 관리하는 일반 오류로 처리합니다.
+성공·오류 응답 중 **바꾸려는 상태코드만** `overrides.responses`에 작성합니다.
+해당 상태코드에 `fields`를 쓰면 선택한 leaf만 반환합니다. 생략한 상태코드는 원본 그대로입니다.
+Endpoint에 없는 상태코드나 원본 schema와 맞지 않는 응답은 실행 서버가 관리하는 일반 오류로 처리합니다.
 
 `fields`는 JSON Pointer escape를 사용하고 배열 요소에 한해 `*`를 추가한 경로입니다.
 
@@ -119,12 +155,15 @@ object/array 전체를 선택할 수 없고 최종 leaf를 지정해야 합니�
 선택한 선택 필드가 없으면 생략하고, 필요한 구조 컨테이너/빈 배열은 보존합니다.
 필터링 전 응답을 Endpoint schema로 검증하며, 필터링된 결과에 원본 required 목록을 다시 강제하지 않습니다.
 `type: "null"`은 body가 없는 HTTP 응답에도 사용할 수 있으며 소비자는 빈 body와 JSON null을 명시적으로 처리합니다.
-선택되지 않은 새 필드는 Endpoint에 추가되어도 자동 노출되지 않습니다.
+`fields` override가 있는 응답은 Endpoint에 새 필드가 추가되어도 선택 목록에 자동 포함되지 않습니다.
+override가 없는 응답은 Endpoint 전체를 상속하므로 원본에 추가된 필드도 포함합니다.
 필드 이름 변경, 마스킹 알고리즘, 값 변환, 조건별 projection은 후속 규격 확장 대상입니다.
 
 ## Page와 연결
 
 Page는 `path`, `actions`와 선택 `parent`를 가집니다. `actions: []`인 화면도 가능합니다.
+각 사용 정의는 `action`과 선택 `overrides`를 가집니다. `(Page, Action)` 쌍은 유일해야 합니다.
+같은 Action을 다른 Page에서 사용할 수 있으며 서로의 override를 공유하거나 변경하지 않습니다.
 `path`는 현재 카탈로그의 단일 프런트엔드 라우트 공간에서 유일합니다.
 `parent`는 탐색 계층이며 path prefix나 권한 상속을 의미하지 않습니다. 순환 연결은 금지합니다.
 
@@ -132,18 +171,24 @@ Page는 `path`, `actions`와 선택 `parent`를 가집니다. `actions: []`인 �
 | --- | --- | --- |
 | Endpoint.server | `providedBy` | Endpoint → Server |
 | Action.endpoint | `invokes` | Action → Endpoint |
-| Page.actions | `uses` | Page → Action |
+| Page.actions[].action | `uses` | Page → Action, 관계 속성으로 overrides 보존 |
 | Page.parent | `childOf` | 자식 Page → 부모 Page |
 
 역방향 탐색은 같은 관계를 DB에서 조회해 구성합니다.
 역방향 배열이나 별도 연결 문서를 수작업으로 유지하지 않습니다.
 어떤 Page에도 연결되지 않은 Action도 허용합니다. 구조상 사용 위치와 실제 실행 권한은 서로 다른 정보입니다.
+Action만으로 페이지별 필드 제한을 결정할 수 없습니다. 페이지 경유 호출은 서버가 유효한 Page 맥락을 확인해야 합니다.
+직접 Endpoint 허용이나 Page 밖 Action 호출의 권한 판단은 별도이며, 임의 Page의 override를 전역 기본값으로 사용하지 않습니다.
 
 ## 검증 경계
 
 검증기는 중복 YAML 키, anchors/aliases, 다중 문서, 비문자열 map key,
 1 MiB 초과 파일, `${...}`, manifest 누락/초과 파일, 경로 이탈과 symlink를 거부합니다.
-각 문서를 JSON Schema로 검사하고 전체 참조, route 중복, Page 순환, Action 계약을 추가 검사합니다.
+각 문서를 JSON Schema로 검사하고 전체 참조, route 중복, Page 순환, 사용 정의 중복과 Page override를 추가 검사합니다.
+snapshot의 `pageActionUsages`에는 Page/Action/Endpoint 식별자와 합성된 `effective` 계약이 들어갑니다.
+effective는 원본 Endpoint를 복사하고 parameter/body의 `source` 또는 `value`, 명시한 응답의 `fields`를 더한 결과입니다.
+응답 `schema`는 필터링 전 upstream 검증용 원본이며, 최종 선택 목록은 `fields`가 결정합니다.
+이 값은 파생 데이터로만 저장하며 원본 Endpoint나 다른 Page를 수정하지 않습니다.
 데이터가 없는 manifest를 정상적인 전체 삭제로 취급하지 않습니다.
 이 검증은 실제 API가 선언한 계약을 지키는지, subject 정보가 존재하는지,
 DB 외부 정책이 리소스를 참조하는지까지 확인하지 않으며 해당 부분은 실행·동기화 서버 책임입니다.
