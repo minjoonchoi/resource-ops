@@ -1,0 +1,59 @@
+apiVersion: resource-ops/v1
+kind: Endpoint
+metadata:
+  name: members.list
+  title: 회원 목록 조회
+spec:
+  server: member-api
+  method: GET
+  path: /v1/members
+  request:
+    parameters:
+      - in: query
+        name: organizationCode
+        required: true
+        schema:
+          type: string
+          minLength: 1
+      - in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+      - in: query
+        name: size
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+  responses:
+    "200":
+      description: 회원 목록
+      schema:
+        type: object
+        additionalProperties: false
+        required: [items, total]
+        properties:
+          items:
+            type: array
+            items:
+              type: object
+              additionalProperties: false
+              required: [id, nickname, email, organizationCode]
+              properties:
+                id: {type: string}
+                nickname: {type: string}
+                email: {type: string}
+                organizationCode: {type: string}
+          total: {type: integer, minimum: 0}
+    "400":
+      description: 잘못된 조회 조건
+      schema:
+        type: object
+        additionalProperties: false
+        required: [code, message]
+        properties:
+          code: {type: string}
+          message: {type: string}

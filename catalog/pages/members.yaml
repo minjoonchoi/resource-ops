@@ -1,0 +1,10 @@
+apiVersion: resource-ops/v1
+kind: Page
+metadata:
+  name: members
+  title: 회원 관리
+spec:
+  path: /members
+  actions:
+    - members.directory.list
+    - members.detail.read

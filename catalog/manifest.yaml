@@ -1,0 +1,16 @@
+apiVersion: resource-ops/v1
+kind: Catalog
+metadata:
+  name: resource-catalog
+  title: 리소스 카탈로그
+  description: 가상 회원 서비스 예제. 실제 서비스 계약으로 교체한 뒤 운영에 연결합니다.
+spec:
+  resources:
+    - catalog/servers/member-api.yaml
+    - catalog/endpoints/members.list.yaml
+    - catalog/endpoints/members.get.yaml
+    - catalog/actions/members.directory.list.yaml
+    - catalog/actions/members.detail.read.yaml
+    - catalog/actions/members.contact.read.yaml
+    - catalog/pages/members.yaml
+    - catalog/pages/member-detail.yaml

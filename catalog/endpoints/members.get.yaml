@@ -1,0 +1,36 @@
+apiVersion: resource-ops/v1
+kind: Endpoint
+metadata:
+  name: members.get
+  title: 회원 단건 조회
+spec:
+  server: member-api
+  method: GET
+  path: /v1/members/{memberId}
+  request:
+    parameters:
+      - in: path
+        name: memberId
+        required: true
+        schema: {type: string, minLength: 1}
+  responses:
+    "200":
+      description: 회원 상세
+      schema:
+        type: object
+        additionalProperties: false
+        required: [id, nickname, email, organizationCode]
+        properties:
+          id: {type: string}
+          nickname: {type: string}
+          email: {type: string}
+          organizationCode: {type: string}
+    "404":
+      description: 회원 없음
+      schema:
+        type: object
+        additionalProperties: false
+        required: [code, message]
+        properties:
+          code: {type: string}
+          message: {type: string}

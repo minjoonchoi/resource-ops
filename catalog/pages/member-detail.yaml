@@ -1,0 +1,11 @@
+apiVersion: resource-ops/v1
+kind: Page
+metadata:
+  name: member-detail
+  title: 회원 상세
+spec:
+  path: /members/:memberId
+  parent: members
+  actions:
+    - members.detail.read
+    - members.contact.read
