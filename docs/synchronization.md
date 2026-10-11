@@ -18,11 +18,11 @@ DB drift가 생기면 같은 Git revision이라도 다시 비교해 desired stat
 ## 입력과 정규화
 
 한 동기화 시도는 `sourceId`, `sourceRevision`(전체 commit SHA),
-manifest와 그 안의 모든 리소스 문서를 입력으로 받습니다.
-`sourceId`는 동기화 서버에 등록된 저장소/manifest 위치의 식별자입니다. manifest에는 별도 리소스 identity가 없습니다.
+같은 SHA의 services/actions/pages 전체 파일과 탐색 완료 결과를 입력으로 받습니다.
+`sourceId`는 동기화 서버에 등록된 저장소/관리 범위의 식별자입니다. 별도 Catalog 리소스나 manifest는 없습니다.
 어떤 파일도 다른 commit SHA에서 섞어 읽지 않습니다.
 
-1. manifest는 resources 파일 목록 전용 스키마로 검증하고, 리소스 문서는 YAML 문법·apiVersion·종류별 스키마로 검증합니다.
+1. Git 트리 탐색 완료와 경로 규칙을 확인하고, 리소스 문서는 YAML 문법·apiVersion·종류별 스키마로 검증합니다.
    Service.spec.openapi를 검증하고 spec.endpoints의 metadata·method·path를 다시 대조하여 Endpoint 리소스를 추출합니다.
    Service·Endpoint의 organization은 원본 디렉터리에서 생성한 값이며 identity는 kind/metadata.name입니다.
 2. 파일 목록·identity·참조·Endpoint 계약·Action 직접 명세 대조·Page별 override·Page 계층을 검증합니다.
@@ -30,8 +30,9 @@ manifest와 그 안의 모든 리소스 문서를 입력으로 받습니다.
 4. 현재 DB 상태와 비교하여 create/update/deactivate/unchanged 계획을 만듭니다.
 5. DB 외부 참조(예: 활성 정책)가 삭제 예정 리소스를 사용하면 전체 반영을 차단하고 충돌을 보고합니다.
 
-운영 consumer는 명시된 manifest 파일만 읽습니다. 로컬 CI는 추가로 Git 작업 트리 전체를 검사하여
-manifest에 등록하지 않은 YAML도 잡습니다. 어떤 파일이든 읽기/검증에 실패하면 완성된 snapshot이 아닙니다.
+운영 consumer와 로컬 CI는 services/actions/pages 하위 YAML을 전부 탐색합니다.
+운영에서는 고정 SHA의 전체 Git checkout 또는 완전한 Git 트리 조회 결과로 다운로드 완전성을 보장해야 합니다.
+페이지 누락·truncated 응답·파일 읽기 실패를 삭제로 해석하지 않습니다. 로컬 검증기만으로 다운로드 누락을 판별할 수 없습니다.
 
 검증 CLI의 snapshot에는 다음 값이 들어 있습니다.
 
@@ -93,7 +94,7 @@ Git SHA 자체는 대소 비교로 신구를 판단할 수 없습니다.
 ## 삭제와 장애
 
 삭제는 **정상적으로 내려받고 검증한 새 snapshot에서 빠진 기존 관리 리소스**만 대상으로 합니다.
-manifest에서만 제거하고 파일을 남기면 CI 실패입니다. 파일만 지워도 실패합니다.
+Action/Page는 파일 삭제로 제거합니다. Service는 OpenAPI 원본 삭제 후 명시적 --all 생성으로 생성물도 정리합니다.
 남은 리소스가 삭제 대상을 참조해도 검증에 실패합니다.
 
 v1 기본 삭제 방식은 soft deactivate입니다. 관련 관리 연결은 같은 트랜잭션에서 제거합니다.
@@ -101,7 +102,7 @@ v1 기본 삭제 방식은 soft deactivate입니다. 관련 관리 연결은 같
 DB 외부의 활성 정책 등에서 삭제 대상을 참조하면 자동 cascade 대신 전체 시도를 blocked 상태로 남깁니다.
 먼저 의존 정책을 정리하거나 별도 마이그레이션을 완료한 뒤 재시도합니다.
 영구 purge와 전체 카탈로그 제거는 이 프로토콜의 정상 동기화에 포함하지 않습니다.
-빈 manifest가 전체 삭제를 유발하지 않도록 현재 규격에서 금지합니다.
+빈 리소스 트리는 전체 삭제 요청으로 간주하지 않고 검증에서 거부합니다.
 
 | 상황 | 처리 |
 | --- | --- |

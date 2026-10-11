@@ -35,7 +35,6 @@ class TargetConversionTests(Fixture):
         result = self.cli(TARGET)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse((self.root / 'services/other-api.yaml').exists())
-        self.assertNotIn('services/other-api.yaml', self.read('catalog/manifest.yaml')['resources'])
         self.assertNotEqual(self.cli('--all', '--check').returncode, 0)
 
     def test_target_does_not_overwrite_unrelated_stale_output_or_prune_orphans(self):
@@ -51,7 +50,7 @@ class TargetConversionTests(Fixture):
         self.write('openapi/other-team/other-api.json', self.read(SOURCE))
         result = self.cli('other-team/other-api')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('services/other-api.yaml', self.read('catalog/manifest.yaml')['resources'])
+        self.assertTrue((self.root / 'services/other-api.yaml').is_file())
         generate(self.root, 'check')
 
     def test_target_check_and_ci_mode_do_not_overwrite_existing_yaml(self):

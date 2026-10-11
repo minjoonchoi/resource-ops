@@ -12,7 +12,6 @@
 | `services/<service>.yaml` | 자동 생성: Service, Endpoint 목록, OpenAPI 원문 |
 | `actions/<metadata.name>.yaml` | 개발조직: 업무와 서비스 참조·method·path |
 | `pages/<metadata.name>.yaml` | 화면 담당: Action 참조와 필요한 override |
-| `catalog/manifest.yaml` | 자동 생성: resources 목록만 포함하는 일반 manifest |
 | `scripts/generate_services.py` | 로컬·CI 공통 생성기 및 생성물 비교 |
 | `scripts/catalog.py` | 전체 카탈로그 검증과 DB 중립 snapshot 생성 |
 
@@ -31,7 +30,7 @@ Endpoint의 `metadata.name`은 `member-api.GET./v1/members/{memberId}`처럼
 `metadata.description`에는 operation의 summary를 우선 가져오고, 없거나 공백이면 description을
 사용합니다. 둘 다 없으면 설명 필드는 생략하며 원본 OpenAPI 내용은 그대로 보존합니다.
 
-Catalog kind는 두지 않습니다. `catalog/manifest.yaml`에는 `resources` 파일 목록만 저장하며,
+Catalog kind와 manifest는 두지 않습니다. `services/`, `actions/`, `pages/`에서 YAML을 직접 탐색하며,
 리소스 정의는 Service·Action·Page와 Service에서 추출하는 Endpoint로 구성합니다.
 
 ## 개발조직의 Action 작성
@@ -107,11 +106,10 @@ python -m venv .venv
 ```
 
 새 OpenAPI를 추가한 뒤 스크립트로 서비스 YAML을 생성하고, 이를 보고 Action을 작성한 다음
-스크립트를 다시 실행하면 manifest에 Action도 등록됩니다. 원본·생성물·Action을 함께 커밋합니다.
+전체 검증을 실행합니다. 별도 파일 등록 없이 원본·생성물·Action을 함께 커밋합니다.
 기존 OpenAPI 변경/이동도 같은 대상 명령을 실행하여 생성물 변경과 함께 커밋합니다.
 선택 인자 없는 실행은 오류이며 전체 서비스 갱신·삭제 원본 정리는 명시적인 `--all` 실행으로 수행합니다.
 단일 대상 변환은 다른 JSON 내용을 파싱하거나 다른 서비스 YAML을 수정·삭제하지 않습니다.
-manifest에는 기존 서비스 YAML과 지정한 생성물을 등록하며 다른 미변환 JSON은 미리 등록하지 않습니다.
 `dist/` snapshot은 Git에 저장하지 않습니다.
 
 ## PR 자동화
@@ -124,14 +122,14 @@ manifest에는 기존 서비스 YAML과 지정한 생성물을 등록하며 다�
 | 기존 서비스 YAML이 생성 결과와 동일 | 비교만 수행, 파일 수정·불필요한 커밋 없음 |
 | 기존 서비스 YAML이 다름 | 덮어쓰지 않고 실패, 로컬 재생성 명령 안내 |
 | 원본 없이 생성 YAML만 남음 | 실패, 원본 삭제 의도와 로컬 재생성 결과 확인 필요 |
-| Action/Page 추가·삭제 | manifest 파일 목록 자동 갱신; Action/Page 내용은 유지 |
+| Action/Page 추가·삭제 | 디렉터리에서 자동 발견하여 전체 검증; 생성물 변경 없음 |
 | Fork/Dependabot PR, master push, 수동 실행 | `--all --check`만 실행; 생성물을 미리 커밋해야 함 |
 
 서비스 YAML은 주석·포맷까지 결정적인 결과와 비교합니다. JSON의 object key 순서나 공백은
 생성 결과에 영향을 주지 않습니다. 기존 YAML 불일치는 임의 수정인지 미재생성인지 자동 단정하지 않고
-모두 실패시킵니다. manifest는 파일 목록이므로 새 파일 등록 시 자동 갱신할 수 있습니다.
+모두 실패시킵니다.
 
-봇은 검증·테스트 완료 후 `services/`와 manifest만 커밋하며 force push하지 않습니다.
+봇은 검증·테스트 완료 후 `services/`만 커밋하며 force push하지 않습니다.
 검증한 최종 커밋에 `catalog/validate` 상태를 기록하여 봇 push 후 추가 CI 실행에 의존하지 않습니다.
 [GitHub 토큰 정책](https://docs.github.com/en/actions/concepts/security/github_token)에 따라
 봇 갱신 후 후속 PR workflow가 승인을 기다릴 수도 있으므로 검증은 현재 실행 안에서 완료합니다.

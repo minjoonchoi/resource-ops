@@ -20,8 +20,8 @@ Service.spec에는 endpoints/openapi만 두며 source는 metadata.organization/n
    .venv/bin/python scripts/generate_services.py member-team/member-api --check
    ```
 
-6. `services/member-api.yaml`의 metadata.name/organization, Endpoint 목록, OpenAPI 원문 보존 및 manifest diff를 확인한다.
-   생성 스크립트는 선택한 서비스와 파일 목록만 갱신한다. 다른 서비스 YAML을 갱신하거나 삭제하지 않는다.
+6. `services/member-api.yaml`의 metadata.name/organization, Endpoint 목록, OpenAPI 원문 보존 diff를 확인한다.
+   생성 스크립트는 선택한 서비스만 갱신한다. 다른 서비스 YAML을 갱신하거나 삭제하지 않는다.
 7. 전체 카탈로그 검증을 수행한다. 다른 서비스의 기존 오류가 나오면 그 파일을 임의 변경하지 말고
    지정 대상의 변환 성공 여부와 전체 검증 실패 원인을 구분해 보고한다.
 
@@ -71,7 +71,7 @@ Action/Page 정의는 별도 요청 없이 생성기에서 자동 생성하거�
 
 - CI 전체 검증은 `--all --check`, 누락 생성은 `--all --create-missing`을 사용한다.
 - 기존 서비스 YAML이 원본의 생성 결과와 다르면 CI는 덮어쓰지 않고 실패해야 한다.
-- Catalog kind는 사용하지 않는다. manifest는 resources 파일 목록만 가지며 별도 manifest.schema.json으로 검증한다.
-- `services/`와 자동 manifest만 생성물이며, `openapi/`, `actions/`, `pages/`는 사람이 관리하는 원본이다.
+- Catalog kind와 manifest 파일은 사용하지 않는다. services/actions/pages의 YAML을 직접 탐색하고 경로·종류·이름을 검증한다.
+- `services/`만 생성물이며, `openapi/`, `actions/`, `pages/`는 사람이 관리하는 원본이다.
 - 생성기/CI 변경 시 기존 생성물 비교, 다른 서비스 격리, 버전별 계약 보존을 유지한다.
 - DB 연결/실행 서버 구현 여부와 카탈로그 변환·검증 완료를 구분해 보고한다.

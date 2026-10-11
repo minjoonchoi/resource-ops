@@ -1,5 +1,3 @@
-# Spring Environment API에서 현재 Git revision을 조회하기 위한 설정입니다.
-# 리소스 데이터 자체는 plain-text API로 catalog/manifest.yaml부터 읽습니다.
+# Spring Environment API에서 현재 Git revision과 규격 버전을 조회하기 위한 설정입니다.
 resourceOps:
-  manifest: catalog/manifest.yaml
   apiVersion: resource-ops/v1

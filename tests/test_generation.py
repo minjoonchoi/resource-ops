@@ -77,11 +77,11 @@ class GenerationTests(Fixture):
         self.assertEqual(self.read(SERVICE)['metadata']['organization'], '회원개발팀')
         self.assertTrue(all(e['metadata']['organization'] == '회원개발팀' for e in self.read(SERVICE)['spec']['endpoints']))
 
-    def test_new_service_manifest_registration(self):
+    def test_new_service_generation_only_writes_service(self):
         self.write('openapi/other-team/other-api.json', self.read(SOURCE))
         changed = generate(self.root, 'create-missing')
-        self.assertEqual(set(changed), {'services/other-api.yaml', 'catalog/manifest.yaml'})
-        self.assertIn('services/other-api.yaml', self.read('catalog/manifest.yaml')['resources'])
+        self.assertEqual(set(changed), {'services/other-api.yaml'})
+        self.assertTrue((self.root / 'services/other-api.yaml').is_file())
 
     def test_author_added_action_is_registered_without_modification(self):
         action = self.read('actions/members.detail.read.yaml')

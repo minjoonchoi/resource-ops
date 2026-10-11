@@ -1,5 +1,5 @@
 # Config Server 자체의 application.yaml에 반영하는 예제입니다.
-# 이 파일은 catalog/manifest.yaml의 동기화 대상이 아닙니다.
+# 이 파일은 services/actions/pages 리소스 디렉터리의 동기화 대상이 아닙니다.
 spring:
   cloud:
     config:

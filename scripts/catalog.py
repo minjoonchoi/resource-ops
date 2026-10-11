@@ -11,7 +11,7 @@ from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
 
 from catalog_common import CatalogError, VERSION, read_yaml, require, validate_shape
-from generate_services import generate
+from generate_services import files, generate
 from history_selection import validate_history_selection
 from openapi_catalog import (TEMPLATE, dereference, extract_endpoints, leaf_schema, parameter_key,
                              parameters_by_key, schema_accepts, validate_service)
@@ -119,19 +119,13 @@ def build_snapshot(root: Path, verify_sources=True):
     schema = json.loads((root / "schemas/catalog.schema.json").read_text(encoding="utf-8"))
     Draft202012Validator.check_schema(schema)
     validator = Draft202012Validator(schema)
-    manifest = read_yaml(root, "catalog/manifest.yaml")
-    manifest_schema = json.loads((root / "schemas/manifest.schema.json").read_text(encoding="utf-8"))
-    Draft202012Validator.check_schema(manifest_schema)
-    validate_shape(Draft202012Validator(manifest_schema), manifest, "catalog/manifest.yaml")
     marker = read_yaml(root, "resource-catalog.yaml")
-    require(marker == {"resourceOps": {"manifest": "catalog/manifest.yaml", "apiVersion": VERSION}},
-            "resource-catalog.yaml: Config Server marker must match the catalog path and version")
-    paths = manifest["resources"]
-    expected = set(paths) | {"catalog/manifest.yaml"}
-    discovered = {str(path.relative_to(root)) for directory in (*DIRECTORIES.values(), "catalog") for path in (root / directory).rglob("*")
-                  if path.suffix in {".yaml", ".yml"}}
-    require(discovered == expected,
-            f"manifest mismatch: unlisted={sorted(discovered - expected)}, missing={sorted(expected - discovered)}")
+    require(marker == {"resourceOps": {"apiVersion": VERSION}},
+            "resource-catalog.yaml: Config Server marker must match the resource version")
+    paths = sorted(path.relative_to(root).as_posix()
+                   for directory in DIRECTORIES.values() for path in files(root, directory)
+                   if path.suffix in {".yaml", ".yml"})
+    require(paths, "at least one resource is required; an empty tree is not a delete-all request")
     resources = {}
     for path in paths:
         document = read_yaml(root, path)

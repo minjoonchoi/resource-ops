@@ -24,7 +24,7 @@ class Fixture(unittest.TestCase):
         self.addCleanup(temp.cleanup)
         self.root = Path(temp.name)
         source = Path(__file__).resolve().parents[1]
-        for directory in ('openapi', 'services', 'actions', 'pages', 'catalog', 'schemas'):
+        for directory in ('openapi', 'services', 'actions', 'pages', 'schemas'):
             shutil.copytree(source / directory, self.root / directory)
         shutil.copy(source / 'resource-catalog.yaml', self.root / 'resource-catalog.yaml')
         # Allows CI to test even on a branch whose services were just generated.

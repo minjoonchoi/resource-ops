@@ -11,8 +11,8 @@ Config Server 자체 설정에 반영합니다. `@EnableConfigServer`와 버전 
 `clone-on-start`는 기동 시 저장소 접근 실패를 드러내고, `refresh-rate: 0`은 요청 시 Git 상태를 갱신합니다.
 카탈로그 동기화 주기 자체는 동기화 서버의 스케줄러가 결정합니다.
 
-`search-paths`는 지정하지 않습니다. plain-text 요청의 경로에 `catalog/manifest.yaml`, `services/...`, `actions/...`, `pages/...`를 포함합니다.
-`catalog/`나 리소스 하위 디렉터리를 search-path로 중복 등록하지 않습니다.
+`search-paths`는 지정하지 않습니다. plain-text 요청의 경로에 `services/...`, `actions/...`, `pages/...`를 포함합니다.
+리소스 하위 디렉터리를 search-path로 중복 등록하지 않습니다.
 운영에서는 Config Server 접근 인증, Git 읽기 자격증명, 재사용 가능한 checkout 디렉터리를 서버 환경에 설정합니다.
 이 저장소에는 실행 환경의 자격증명 값을 저장하지 않습니다.
 
@@ -21,10 +21,9 @@ Config Server 자체 설정에 반영합니다. `@EnableConfigServer`와 버전 
 | 용도 | 요청 | 사용 데이터 |
 | --- | --- | --- |
 | 현재 브랜치 revision 확인 | `GET /resource-catalog/default/master` | Environment JSON의 `version`과 설정 marker |
-| manifest 조회 | `GET /resource-catalog/default/{sha}/catalog/manifest.yaml` | YAML 문서 |
 | 개별 리소스 조회 | `GET /resource-catalog/default/{sha}/services/member-api.yaml` | 생성된 Service YAML (OpenAPI·Endpoint 목록 포함) |
 
-루트 `resource-catalog.yaml`은 Environment API에 manifest 위치와 규격 버전을 알리는 작은 설정입니다.
+루트 `resource-catalog.yaml`은 Environment API에 규격 버전을 알리는 작은 설정입니다.
 리소스 문서 자체를 Spring property source로 평탄화하거나 여러 YAML을 속성 우선순위로 합성하지 않습니다.
 일반 `/{application}-{profile}.yaml` 렌더링 API도 카탈로그 원본 조회에 사용하지 않습니다.
 
@@ -38,7 +37,10 @@ plain-text 파일은 `${...}` 치환과 profile별 파일 선택이 일어날 �
 
 1. 정상 인증된 Config Server에서 Environment 응답을 읽습니다.
 2. `version`이 유효한 전체 Git SHA인지 확인하고 해당 동기화 시도의 `sourceRevision`으로 확정합니다.
-3. 이후 manifest와 그 안의 모든 파일은 **같은 SHA**를 label로 사용합니다.
+3. 같은 SHA의 Git checkout 또는 Git 트리 API로 services/actions/pages 아래의 전체 YAML 경로를 탐색합니다.
+   기본 plain-text API는 개별 파일 조회용이므로 파일 목록은 동기화 서버가 Git에서 구합니다.
+   트리 API의 pagination/truncated 여부를 확인하여 완전한 목록임을 보장합니다.
+   이후 모든 파일 조회는 **같은 SHA**를 label로 사용합니다.
 4. 파일별 성공 응답과 YAML 해석, 전체 스키마 및 참조 검증이 모두 성공해야 diff를 만듭니다.
 5. 처리 중 master가 바뀌면 현재 snapshot과 섞지 않고 다음 동기화 시도에서 새 SHA를 읽습니다.
 6. Config Server의 checkout 캐시가 이전 SHA를 반환해도 완료 상태를 오인하지 않도록 주기적으로 재조회합니다.
@@ -58,14 +60,12 @@ curl --fail --silent --show-error \
 # 위 JSON의 version을 그대로 복사합니다. placeholder를 실제 SHA로 교체합니다.
 CATALOG_REVISION='<environment-version>'
 curl --fail --silent --show-error \
-  "$CONFIG_SERVER_URL/resource-catalog/default/$CATALOG_REVISION/catalog/manifest.yaml"
-curl --fail --silent --show-error \
   "$CONFIG_SERVER_URL/resource-catalog/default/$CATALOG_REVISION/services/member-api.yaml"
 ```
 
 소비자는 HTTP timeout, bounded retry, 응답 크기 한도를 적용하고 HTML 오류 페이지나 빈 응답을
-빈 카탈로그로 처리하지 않습니다. manifest path는 고정값으로 확인하고,
-그 안의 resource 경로는 이 저장소의 경로 규칙을 검사한 뒤 조회합니다.
+빈 카탈로그로 처리하지 않습니다. Git 트리에서 얻은 resource 경로는 고정된 세 디렉터리와
+이 저장소의 경로 규칙을 검사한 뒤 조회합니다. 파일 목록 탐색이 불완전하면 DB 반영을 중단합니다.
 환경설정 marker가 가리키는 임의의 외부 URL을 따라가지 않습니다.
 카탈로그 전체를 내려받아 격리된 임시 디렉터리에 보관한 뒤 같은 검증 규칙을 적용할 수 있습니다.
 `python scripts/catalog.py --root <download-directory> --from-generated`는 OpenAPI JSON 없이
@@ -75,8 +75,8 @@ Service YAML 자체가 원본 OpenAPI를 포함하므로 Config Server 소비자
 
 ## 연결 시 확인할 항목
 
-- `resource-catalog/default/master`에서 `version`과 `resourceOps.manifest` marker를 확인합니다.
-- 같은 SHA의 manifest와 YAML 파일 6개를 읽어 리소스 8개와 참조 10개가 만들어지는지 확인합니다.
+- `resource-catalog/default/master`에서 `version`과 `resourceOps.apiVersion` marker를 확인합니다.
+- 같은 SHA의 Git 트리에서 찾은 YAML 파일 6개를 읽어 리소스 8개와 참조 10개가 만들어지는지 확인합니다.
 - Action의 서비스 참조를 확인하고 직접 작성한 method·path를 등록 정의와 대조해 일치하는 Endpoint 연결을 도출하는지 확인합니다.
 - Page별 사용 계약 4개를 도출하고 동일 Action의 override가 각 Page에 독립적으로 적용되는지 확인합니다.
 - master가 변경되어도 이전 SHA 조회 결과가 그대로 유지되는지 확인합니다.
