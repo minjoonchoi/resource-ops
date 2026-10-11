@@ -393,14 +393,15 @@
             "type": "object",
             "additionalProperties": false,
             "required": [
-              "name"
+              "name",
+              "config"
             ],
             "properties": {
               "name": {
                 "const": "confirm"
               },
               "config": {
-                "type": "object"
+                "$ref": "#/$defs/confirmConfig"
               }
             }
           }
@@ -424,6 +425,56 @@
               }
             }
           }
+        }
+      }
+    },
+    "confirmConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "targets",
+        "requiredCount",
+        "execution"
+      ],
+      "properties": {
+        "targets": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "name"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "User",
+                  "Organization",
+                  "Role"
+                ]
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "not": {
+                  "pattern": "\\s"
+                }
+              }
+            }
+          }
+        },
+        "requiredCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "execution": {
+          "enum": [
+            "requester",
+            "automatic"
+          ]
         }
       }
     }

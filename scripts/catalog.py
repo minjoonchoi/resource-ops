@@ -18,6 +18,16 @@ from openapi_catalog import (TEMPLATE, dereference, extract_endpoints, leaf_sche
 DIRECTORIES = {"Service": "services", "Action": "actions", "Page": "pages"}
 
 
+def validate_action_plugins(action):
+    """Validate statically knowable quorum limits; runtime resolves external memberships."""
+    for plugin in action["spec"].get("plugins", {}).get("before", []):
+        config = plugin["config"]
+        targets = config["targets"]
+        if all(target["kind"] == "User" for target in targets):
+            require(config["requiredCount"] <= len(targets),
+                    f"Action/{action['metadata']['name']}: confirm requiredCount exceeds distinct User targets")
+
+
 def resolve_action_endpoint(action, resources, routes):
     """Match a direct Action specification against the registered service and route."""
     name, spec = action["metadata"]["name"], action["spec"]["endpoint"]
@@ -172,6 +182,7 @@ def build_snapshot(root: Path, verify_sources=True):
     action_endpoints = {}
     for (kind, name), resource in sorted(resources.items()):
         if kind == "Action":
+            validate_action_plugins(resource)
             endpoint = resolve_action_endpoint(resource, resources, routes)
             action_endpoints[name] = endpoint
             link(f"Action/{name}", "invokes", "Endpoint", endpoint["metadata"]["name"])

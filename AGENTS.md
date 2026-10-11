@@ -32,7 +32,8 @@
 선택 인자 없는 실행을 전체 변환으로 간주하지 않는다. 원본 삭제 후 생성물 정리도 명시적인 전체 유지보수 작업이다.
 서비스 참조가 필요한 Action은 생성 YAML의 Service.metadata.name과 method/path를 확인하여
 `spec.endpoint.service/method/path`에 작성한다. 실행 전후 플러그인은 `spec.plugins.before/after`에
-연결하며 요청/응답 필드 설정은 계속 Page의 overrides에 둔다.
+연결하며 요청/응답 필드 설정은 계속 Page의 overrides에 둔다. confirm에는 config.targets,
+requiredCount, execution(requester/automatic)을 반드시 작성하고 대상·확인 수를 추측하여 채우지 않는다.
 Action/Page 정의는 별도 요청 없이 생성기에서 자동 생성하거나 수정하지 않는다.
 
 ## 명세 버전 호환성 작업

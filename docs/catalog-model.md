@@ -90,6 +90,16 @@ spec:
   plugins:
     before:
       - name: confirm
+        config:
+          targets:
+            - kind: User
+              name: reviewer-a
+            - kind: User
+              name: reviewer-b
+            - kind: User
+              name: reviewer-c
+          requiredCount: 2
+          execution: requester
     after:
       - name: history
 ```
@@ -114,7 +124,8 @@ Service.metadata.name 참조와 method/path만 담습니다. 기존 spec 최상�
 | `spec.endpoint` | 실행할 엔드포인트 한 개: service, method, path |
 | `spec.plugins.before` | 엔드포인트 실행 전 플러그인 배열. 현재 `name: confirm` 지원 |
 | `spec.plugins.after` | 엔드포인트 실행 후 플러그인 배열. 현재 `name: history` 지원 |
-| 각 플러그인의 `config` | 선택적인 플러그인별 설정 객체. 값은 snapshot에 그대로 보존 |
+| confirm의 `config` | 필수 확인 대상·필요 인원·실행 방식 |
+| history의 `config` | 선택적인 이력 플러그인 설정 객체 |
 
 플러그인을 사용하지 않으면 `plugins`를 생략합니다. before/after 중 필요한 단계만 작성할 수도
 있습니다. 빈 plugins/단계 배열은 거부합니다. 현재 각 플러그인은 정해진 단계에 한 번만 연결하며,
@@ -123,20 +134,54 @@ Service.metadata.name 참조와 method/path만 담습니다. 기존 spec 최상�
 플러그인의 name은 실행 서버에 등록된 구현 식별자이며 카탈로그 리소스 참조가 아닙니다.
 Service/Action/Page 간 참조는 계속 대상 metadata.name을 사용합니다.
 
+### Confirm 조건
+
+confirm.config에는 다음 세 필드를 모두 작성합니다. 생략된 조건으로 자동 실행되거나 단순 확인으로
+통과하는 기본값은 없습니다. 예제의 reviewer-a/b/c는 가상 사용자 식별자입니다.
+
+| 필드 | 의미 |
+| --- | --- |
+| `targets` | 확인 가능한 대상 목록. 각 항목은 kind와 name |
+| `requiredCount` | 목록에서 선택된 서로 다른 사용자 중 필요한 확인 인원. 1 이상의 정수 |
+| `execution: requester` | 조건 충족 후 실행 대기. 원래 요청자가 명시적으로 실행해야 호출 |
+| `execution: automatic` | 조건 충족 시 실행 서버가 해당 요청을 즉시 실행 대상으로 전환 |
+
+대상 kind는 User, Organization, Role이며 name은 외부 사용자/조직/역할 정의의 metadata.name에
+대응하는 식별키입니다. 이메일·표시명으로 추측하여 매칭하지 않습니다. 이 저장소에 해당 리소스 정의는
+없으므로 존재 여부와 조직/역할 소속은 실행 서버가 확인합니다.
+User는 해당 사용자, Organization은 해당 조직의 직접 소속 사용자, Role은 해당 역할을 직접 부여받은
+사용자를 후보로 해석합니다. 하위 조직이나 간접 역할 상속은 암묵적으로 확장하지 않습니다.
+여러 대상의 후보를 합친 뒤 사용자 식별자로 중복을 제거하며, 동일 사용자의 반복 확인이나
+여러 조직/역할 소속은 한 명으로 계산합니다. requiredCount는 조직/역할 개수가 아니라 확인한 사람 수입니다.
+
+중복 대상, 빈 목록, 공백 이름, 잘못된 kind/실행 방식, 누락 조건, 0·음수·소수 확인 수는 카탈로그 검증에서
+거부합니다. User만 지정한 경우 requiredCount가 대상 수보다 큰 설정도 거부합니다.
+조직/역할을 포함하면 확정 후보 수를 로컬에서 알 수 없으므로 실행 서버가 조회·중복 제거 후
+필요 인원을 충족할 수 있는지 검사합니다. 미존재 대상이나 후보 부족은 확인 요청을 시작하기 전에 오류로 처리합니다.
+
+확인은 하나의 실행 요청에 귀속됩니다. 요청자·Action·Page 맥락·확정 입력·카탈로그 revision을
+함께 고정하고, 다른 입력이나 수정된 정책에 기존 확인을 재사용하지 않습니다. 실제 호출 직전에
+요청자의 실행 권한과 확인자의 자격·유효 확인 수를 다시 검사합니다. requester 방식은 원래 요청자만
+실행할 수 있고 automatic 방식도 그 요청자의 권한/입력 맥락을 사용합니다.
+동시 확인·중복 이벤트는 동일 실행 요청을 원자적으로 한 번만 실행 대상으로 전환해야 합니다.
+네트워크 재시도 시 endpoint의 중복 호출 방지는 실행 서버와 upstream의 idempotency 계약이 필요합니다.
+
 실행 서버가 따라야 할 단계 계약은 다음과 같습니다.
 
 1. Action 권한과 입력을 검증하고 Page 사용 맥락의 override를 적용합니다.
-2. before의 confirm이 연결되었으면 확인을 완료한 뒤 endpoint를 호출합니다.
-   대기·거절·취소·오류 상태에서는 endpoint를 호출하지 않습니다. 확인 UI나 결재 방식은 플러그인 구현에서 결정합니다.
+2. before의 confirm이 연결되었으면 requiredCount명의 유효 확인이 모일 때까지 대기합니다.
+   requester 방식은 충족 후 요청자의 실행 명령을 기다리고 automatic 방식은 충족 시 자동 실행합니다.
+   대기·거절·취소·오류 상태에서는 endpoint를 호출하지 않습니다. 확인 UI는 플러그인 구현에서 결정합니다.
 3. endpoint 호출을 시도하고 결과를 확정합니다. after의 history가 연결되었으면 성공뿐 아니라
    API 오류·timeout 등 실패 결과도 기록합니다. confirm 단계에서 끝난 경우에는 after를 실행하지 않습니다.
 4. history 저장 실패를 이유로 이미 실행한 endpoint를 다시 호출하지 않습니다.
    실행 식별자로 이력 저장을 재시도/중복 방지하고 저장 실패를 별도 상태로 추적합니다.
 
 위 내용은 실행 소비자 계약이며 이 저장소의 스크립트는 확인 UI, API 호출, DB 이력 저장을 실행하지 않습니다.
-config는 현재 객체 타입과 원문 보존까지만 검증합니다. 플러그인별 필수 설정 및 지원 여부는 실행 서버가
+confirm.config의 구조와 정적 조건은 카탈로그에서 검증합니다. history.config는 객체 타입과 원문 보존을 검증합니다.
+외부 대상의 존재/소속과 플러그인별 실행 지원 여부는 실행 서버가
 업무 호출 전에 검사해야 하며, 지원하지 않는 플러그인을 무시하고 endpoint를 호출하면 안 됩니다.
-이력의 저장소·보존 기간·저장 필드 및 확인 절차의 세부 설정은 플러그인 구현 계약에서 정의합니다.
+이력의 저장소·보존 기간·저장 필드와 확인 UI는 플러그인 구현 계약에서 정의합니다.
 요청/응답 전문의 자동 저장이나 필드 변경은 이 선언에 포함되지 않습니다.
 
 플러그인 구성은 Action에 속하므로 모든 Page 사용에 동일하게 적용됩니다. Page overrides로 플러그인을

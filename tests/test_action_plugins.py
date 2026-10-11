@@ -6,6 +6,12 @@ from catalog_test_base import *
 ACTION = 'actions/members.detail.read.yaml'
 
 
+def confirm_plugin():
+    return {'name': 'confirm', 'config': {
+        'targets': [{'kind': 'User', 'name': 'reviewer-a'}],
+        'requiredCount': 1, 'execution': 'requester'}}
+
+
 class ActionPluginTests(Fixture):
     def set_plugins(self, plugins):
         self.change(ACTION, lambda d: d['spec'].update(plugins=plugins))
@@ -14,7 +20,7 @@ class ActionPluginTests(Fixture):
         return [u for u in snapshot['pageActionUsages'] if u['action'] == 'members.detail.read']
 
     def test_plugins_are_optional_and_missing_phases_normalize_to_empty_arrays(self):
-        for plugins in (None, {'before': [{'name': 'confirm'}]}, {'after': [{'name': 'history'}]}):
+        for plugins in (None, {'before': [confirm_plugin()]}, {'after': [{'name': 'history'}]}):
             with self.subTest(plugins=plugins):
                 if plugins is not None:
                     self.set_plugins(plugins)
@@ -25,7 +31,7 @@ class ActionPluginTests(Fixture):
 
     def test_plugin_configuration_survives_snapshot_without_affecting_endpoint_contract(self):
         before = build_snapshot(self.root)
-        plugins = {'before': [{'name': 'confirm', 'config': {'message': '확인하시겠습니까?'}}],
+        plugins = {'before': [confirm_plugin()],
                    'after': [{'name': 'history', 'config': {'event': 'member.read',
                                                          'labels': ['member', 'detail']}}]}
         self.set_plugins(plugins)
@@ -86,3 +92,55 @@ class ActionPluginTests(Fixture):
                 self.change(ACTION, lambda d: d.update(spec=spec))
                 with self.assertRaises(CatalogError):
                     build_snapshot(self.root)
+
+    def test_confirm_quorum_and_execution_modes_are_preserved(self):
+        for mode in ('requester', 'automatic'):
+            with self.subTest(mode=mode):
+                plugin = confirm_plugin()
+                plugin['config'].update(targets=[{'kind': 'User', 'name': name}
+                                                 for name in ('a', 'b', 'c')],
+                                        requiredCount=2, execution=mode)
+                self.set_plugins({'before': [plugin]})
+                snapshot = build_snapshot(self.root)
+                for usage in self.usages(snapshot):
+                    self.assertEqual(usage['plugins']['before'], [plugin])
+                self.assertEqual(snapshot, build_snapshot(self.root, verify_sources=False))
+
+    def test_confirm_rejects_missing_invalid_and_unachievable_conditions(self):
+        base = confirm_plugin()['config']
+        invalid = [None, {}, *[{k: v for k, v in base.items() if k != missing}
+                               for missing in base]]
+        for count in (0, -1, 1.5, True, '1', 2):
+            invalid.append({**base, 'requiredCount': count})
+        invalid += [{**base, 'targets': targets} for targets in (
+            [], [{'kind': 'User', 'name': 'a'}] * 2,
+            [{'kind': 'Team', 'name': 'a'}], [{'kind': 'User', 'name': ' '}],
+            [{'kind': 'User', 'name': ''}], [{'kind': 'User', 'name': 'a\n'}],
+            [{'kind': 'User', 'name': 'a', 'count': 2}], [{'name': 'a'}])]
+        invalid += [{**base, 'execution': mode} for mode in ('manual', '', None)]
+        invalid += [{**base, 'required': 1}]
+        for config in invalid:
+            with self.subTest(config=config):
+                self.set_plugins({'before': [{'name': 'confirm', 'config': config}]})
+                with self.assertRaises(CatalogError):
+                    build_snapshot(self.root)
+        self.set_plugins({'before': [{'name': 'confirm'}]})
+        with self.assertRaises(CatalogError):
+            build_snapshot(self.root)
+
+    def test_organization_and_role_quorum_is_deferred_to_runtime_membership(self):
+        plugin = confirm_plugin()
+        plugin['config'].update(targets=[{'kind': 'Organization', 'name': 'security-team'},
+                                         {'kind': 'Role', 'name': 'reviewer'}], requiredCount=3)
+        self.set_plugins({'before': [plugin]})
+        for usage in self.usages(build_snapshot(self.root)):
+            self.assertEqual(usage['plugins']['before'], [plugin])
+
+    def test_unpaged_action_cannot_require_more_than_user_candidates(self):
+        for page in ('members', 'member-detail'):
+            self.change(f'pages/{page}.yaml', lambda d: d['spec'].update(
+                actions=[u for u in d['spec']['actions'] if u['action'] != 'members.detail.read']))
+        plugin = confirm_plugin()
+        plugin['config']['requiredCount'] = 2
+        self.set_plugins({'before': [plugin]})
+        self.invalid('requiredCount exceeds distinct User targets')

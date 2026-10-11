@@ -13,5 +13,15 @@ spec:
   plugins:
     before:
       - name: confirm
+        config:
+          targets:
+            - kind: User
+              name: reviewer-a
+            - kind: User
+              name: reviewer-b
+            - kind: User
+              name: reviewer-c
+          requiredCount: 2
+          execution: requester
     after:
       - name: history
