@@ -39,7 +39,8 @@ class ServiceContractTests(Fixture):
                 node={'$ref': '#/components/schemas/Node'},
                 data={'type': 'object', 'default': literal, 'enum': [literal], 'const': literal},
                 **{name: {'type': 'string'} for name in ('title', 'example', 'examples', '$ref', 'default')})
-        with patch('requests.get', side_effect=AssertionError('validation must stay offline')):
+        with patch('jsonschema_path.retrievers.SchemaRetriever.__call__',
+                   side_effect=AssertionError('validation must stay offline')):
             self.change_api(edit)
         s = self.read(SERVICE)
         self.assertEqual(set(s['spec']['schemas']), {'Member', 'Node', 'Label'})
