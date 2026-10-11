@@ -4,4 +4,8 @@ metadata:
   name: members.directory.list
   title: 회원 목록 조회
 spec:
-  endpoint: members.list
+  service:
+    name: member-api
+    baseUrl: https://members.example.invalid
+  method: GET
+  path: /v1/members

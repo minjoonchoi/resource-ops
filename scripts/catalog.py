@@ -182,7 +182,33 @@ def validate_endpoint(resource):
         validate_value_schema(response["schema"], f"{location}.responses.{status}")
 
 
-def resolve_page_action(page_name, usage, endpoint):
+def resolve_action_endpoint(action, resources, routes):
+    """Match a direct Action specification against the registered service and route."""
+    name, spec = action["metadata"]["name"], action["spec"]
+    location = f"catalog/actions/{name}.yaml (Action/{name})"
+    service = spec["service"]
+    server = resources.get(("Server", service["name"]))
+    require(server is not None,
+            f"{location}: spec.service.name: unregistered service {service['name']!r}")
+    expected_url = server["spec"]["baseUrl"]
+    require(service["baseUrl"] == expected_url,
+            f"{location}: spec.service.baseUrl mismatch with Server/{service['name']}: "
+            f"expected {expected_url!r}, got {service['baseUrl']!r}")
+    route = service["name"], spec["method"], spec["path"]
+    endpoint = routes.get(route)
+    if endpoint is None:
+        shape = TEMPLATE.sub("{}", spec["path"])
+        similar = next((key[2] for key in routes if key[:2] == route[:2]
+                        and TEMPLATE.sub("{}", key[2]) == shape), None)
+        if similar is not None:
+            raise CatalogError(f"{location}: spec.path must exactly match {similar!r}, "
+                               f"including path parameter names; got {spec['path']!r}")
+        raise CatalogError(f"{location}: no registered Endpoint for service {service['name']!r}: "
+                           f"{spec['method']} {spec['path']}")
+    return endpoint
+
+
+def resolve_page_action(page_name, usage, action, endpoint):
     """Validate sparse overrides and resolve an independent Page/Action contract."""
     location = f"Page/{page_name}.actions[{usage['action']}]"
     overrides, contract = usage.get("overrides", {}), endpoint["spec"]
@@ -204,6 +230,8 @@ def resolve_page_action(page_name, usage, endpoint):
             leaf_schema(contract["responses"][status]["schema"], pointer, f"{location}.responses.{status}")
 
     effective = copy.deepcopy(contract)
+    effective.pop("server")
+    effective["service"] = copy.deepcopy(action["spec"]["service"])
     for parameter in effective["request"]["parameters"]:
         binding = changed.get(parameter_key(parameter), {"source": "input"})
         # Preserve Endpoint names, types and required flags; only the value source changes.
@@ -262,7 +290,8 @@ def build_snapshot(root: Path):
             edge["overrides"] = copy.deepcopy(overrides)
         relations.append(edge)
 
-    routes = set()
+    routes = {}
+    route_shapes = set()
     page_routes = set()
     for (kind, name), resource in sorted(resources.items()):
         spec = resource["spec"]
@@ -272,11 +301,10 @@ def build_snapshot(root: Path):
         elif kind == "Endpoint":
             link(source, "providedBy", "Server", spec["server"])
             validate_endpoint(resource)
-            route = spec["server"], spec["method"], TEMPLATE.sub("{}", spec["path"])
-            require(route not in routes, f"{source}: duplicate server/method/path route {route}")
-            routes.add(route)
-        elif kind == "Action":
-            link(source, "invokes", "Endpoint", spec["endpoint"])
+            shape = spec["server"], spec["method"], TEMPLATE.sub("{}", spec["path"])
+            require(shape not in route_shapes, f"{source}: duplicate server/method/path route {shape}")
+            route_shapes.add(shape)
+            routes[spec["server"], spec["method"], spec["path"]] = resource
         elif kind == "Page":
             require(spec["path"] not in page_routes, f"{source}: duplicate page path")
             page_routes.add(spec["path"])
@@ -289,13 +317,21 @@ def build_snapshot(root: Path):
             if "parent" in spec:
                 link(source, "childOf", "Page", spec["parent"])
 
+    # Resolve every Action only after the complete service/Endpoint registry is valid.
+    action_endpoints = {}
+    for (kind, name), resource in sorted(resources.items()):
+        if kind == "Action":
+            endpoint = resolve_action_endpoint(resource, resources, routes)
+            action_endpoints[name] = endpoint
+            link(f"Action/{name}", "invokes", "Endpoint", endpoint["metadata"]["name"])
+
     page_action_usages = []
     for (kind, name), resource in sorted(resources.items()):
         if kind == "Page":
             for usage in resource["spec"]["actions"]:
                 action = resources["Action", usage["action"]]
-                endpoint = resources["Endpoint", action["spec"]["endpoint"]]
-                page_action_usages.append(resolve_page_action(name, usage, endpoint))
+                endpoint = action_endpoints[usage["action"]]
+                page_action_usages.append(resolve_page_action(name, usage, action, endpoint))
             visited, current = set(), name
             while current is not None:
                 require(current not in visited, f"Page/{name}: parent cycle through {current}")

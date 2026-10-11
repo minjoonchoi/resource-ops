@@ -8,8 +8,8 @@ Spring Cloud Config Server가 이 저장소의 특정 Git 커밋을 제공하고
 
 | 구성 | 역할 | 이 저장소의 상태 |
 | --- | --- | --- |
-| YAML 카탈로그 | 리소스 원본과 연결 참조 | 예제 8개 구현 |
-| JSON Schema / 검증 CLI | 형식, 참조, Page별 Endpoint override 검증 | 구현 |
+| YAML 카탈로그 | 리소스 원본과 Action 직접 명세 | 예제 8개 구현 |
+| JSON Schema / 검증 CLI | 형식, 참조, Action 명세 대조, Page override 검증 | 구현 |
 | 정규화 snapshot | 리소스·관계·Page별 최종 사용 계약을 담은 DB 중립 JSON | 로컬 생성 가능 |
 | GitHub Actions | PR / master 변경 검증 | 워크플로 정의 |
 | Cloud Config Server | 커밋별 YAML 제공 | 외부 서버 설정 예제와 조회 계약 제공 |
@@ -20,18 +20,31 @@ Spring Cloud Config Server가 이 저장소의 특정 Git 커밋을 제공하고
 
 ## 리소스 모델
 
-| 리소스 | 정의 | 다른 리소스 참조 |
+| 리소스 | 정의 | 연결 방식 |
 | --- | --- | --- |
 | `Server` | API를 제공하는 논리 서버와 base URL | 없음 |
 | `Endpoint` | 서버의 HTTP method/path와 원본 요청·응답 계약 | `spec.server` → Server 1개 |
-| `Action` | 업무/권한 단위와 사용할 Endpoint | `spec.endpoint` → Endpoint 1개 |
+| `Action` | 업무/권한 단위와 호출할 API 직접 명세 | `service.name/baseUrl` + `method` + `path` 대조 |
 | `Page` | 화면 경로와 Action별 Endpoint override | `spec.actions[].action` → Action 여러 개, `spec.parent` → 상위 Page |
 
-Endpoint가 원본 요청·응답 계약을 정의하고 Action은 Endpoint 참조만 가집니다.
+Endpoint가 원본 요청·응답 계약을 정의하고 Action은 서비스·HTTP 메서드·경로를 직접 명시합니다.
+Action 파일만 읽어도 호출 대상을 알 수 있으며 Endpoint ID를 작성하지 않습니다.
+
+```yaml
+spec:
+  service:
+    name: member-api
+    baseUrl: https://members.example.invalid
+  method: GET
+  path: /v1/members/{memberId}
+```
+
+검증 스크립트가 서비스명·주소를 등록된 Server와 대조하고, 동일 서비스의 method/path와
+정확히 일치하는 Endpoint를 확인합니다. 경로 변수명도 일치해야 하며 잘못된 명세는 CI에서 실패합니다.
 실제 페이지의 사용 방식은 `Page.spec.actions[].overrides`에 **원본에서 달라지는 부분만** 작성합니다.
 override를 생략하면 Endpoint를 그대로 상속하며, parameter는 `(in, name)`, 응답은 상태코드별로 적용합니다.
-하나의 Endpoint를 여러 Action이 참조할 수 있고, Page와 Action은 다대다입니다.
-각 참조가 연결의 원본이고, DB 연결 데이터는 여기서 도출합니다.
+여러 Action이 동일한 API를 명시할 수 있고, Page와 Action은 다대다입니다.
+Action의 직접 명세를 검증한 결과와 나머지 리소스의 참조에서 DB 연결 데이터를 도출합니다.
 별도 관계 YAML에 같은 연결을 반복해서 쓰지 않습니다.
 
 예제에서 같은 `members.detail.read` Action을 회원 목록 Page는 ID·닉네임만,
@@ -82,7 +95,7 @@ snapshot은 원본 리소스와 `providedBy`, `invokes`, `uses`, `childOf` 관�
 ## 변경 절차
 
 1. 작업 브랜치에서 YAML을 생성·수정하고 `manifest.yaml` 목록을 갱신합니다.
-2. 전체 검증을 실행합니다. 참조 대상과 참조하는 파일은 같은 PR에서 변경합니다.
+2. 전체 검증을 실행합니다. 서비스 주소나 Endpoint method/path를 바꿀 때 관련 Action 명세도 같은 PR에서 변경합니다.
 3. PR에서 원본 계약, Page별 Action 사용 방식, 관계 변경 및 삭제 영향을 검토합니다.
 4. PR을 `master`에 병합합니다. 동기화 서버가 병합된 HEAD의 커밋 SHA를 확정합니다.
 5. 해당 SHA의 manifest와 모든 리소스를 읽고 전체 검증·diff 후 한 트랜잭션으로 반영합니다.

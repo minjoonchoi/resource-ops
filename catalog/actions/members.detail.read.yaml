@@ -4,4 +4,8 @@ metadata:
   name: members.detail.read
   title: 회원 기본 정보 보기
 spec:
-  endpoint: members.get
+  service:
+    name: member-api
+    baseUrl: https://members.example.invalid
+  method: GET
+  path: /v1/members/{memberId}

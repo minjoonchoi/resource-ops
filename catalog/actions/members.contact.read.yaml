@@ -5,4 +5,8 @@ metadata:
   title: 회원 연락처 보기
   description: 기본 정보 조회와 같은 Endpoint를 사용하지만 별도 Action 권한으로 제어합니다.
 spec:
-  endpoint: members.get
+  service:
+    name: member-api
+    baseUrl: https://members.example.invalid
+  method: GET
+  path: /v1/members/{memberId}

@@ -64,8 +64,68 @@ class CatalogTests(unittest.TestCase):
         self.invalid("duplicate YAML key")
 
     def test_missing_reference(self):
-        self.change("catalog/actions/members.detail.read.yaml", lambda d: d["spec"].update(endpoint="missing"))
-        self.invalid("missing reference Endpoint/missing")
+        self.change("catalog/endpoints/members.get.yaml", lambda d: d["spec"].update(server="missing"))
+        self.invalid("missing reference Server/missing")
+
+    def test_action_rejects_endpoint_id_reference(self):
+        self.change("catalog/actions/members.detail.read.yaml", lambda d: d["spec"].update(endpoint="members.get"))
+        self.invalid("Additional properties.*endpoint")
+
+    def test_action_requires_service_details_not_only_name(self):
+        self.change("catalog/actions/members.detail.read.yaml", lambda d: d["spec"].update(service="member-api"))
+        self.invalid("not of type 'object'")
+
+    def test_action_service_must_be_registered(self):
+        self.change("catalog/actions/members.detail.read.yaml", lambda d: d["spec"]["service"].update(name="missing"))
+        self.invalid("catalog/actions/members.detail.read.yaml.*spec.service.name: unregistered service")
+
+    def test_action_service_url_must_match_registered_server(self):
+        self.change("catalog/actions/members.detail.read.yaml", lambda d: d["spec"]["service"].update(baseUrl="https://wrong.example.invalid"))
+        self.invalid("catalog/actions/members.detail.read.yaml.*spec.service.baseUrl mismatch.*expected.*members.example.invalid")
+
+    def test_action_method_must_match_registered_endpoint(self):
+        self.change("catalog/actions/members.detail.read.yaml", lambda d: d["spec"].update(method="POST"))
+        self.invalid("no registered Endpoint.*POST /v1/members")
+
+    def test_action_path_must_match_registered_endpoint(self):
+        self.change("catalog/actions/members.detail.read.yaml", lambda d: d["spec"].update(path="/v2/members/{memberId}"))
+        self.invalid("no registered Endpoint.*GET /v2/members")
+
+    def test_action_path_parameter_names_must_match_exactly(self):
+        self.change("catalog/actions/members.detail.read.yaml", lambda d: d["spec"].update(path="/v1/members/{id}"))
+        self.invalid("spec.path must exactly match.*memberId.*including path parameter names")
+
+    def test_action_does_not_depend_on_endpoint_identity(self):
+        old = "catalog/endpoints/members.get.yaml"
+        new = "catalog/endpoints/members.read.yaml"
+        actions_before = {p.name: p.read_text() for p in (self.root / "catalog/actions").glob("*.yaml")}
+        self.change(old, lambda d: d["metadata"].update(name="members.read"))
+        (self.root / old).rename(self.root / new)
+        self.change("catalog/manifest.yaml", lambda d: d["spec"].update(resources=[new if p == old else p for p in d["spec"]["resources"]]))
+        snapshot = build_snapshot(self.root)
+        self.assertIn({"from": "Action/members.detail.read", "type": "invokes", "to": "Endpoint/members.read"}, snapshot["relations"])
+        self.assertEqual(actions_before, {p.name: p.read_text() for p in (self.root / "catalog/actions").glob("*.yaml")})
+
+    def test_matching_is_scoped_to_service_even_with_same_base_url(self):
+        server = self.read("catalog/servers/member-api.yaml")
+        server["metadata"]["name"] = "other-api"
+        self.write("catalog/servers/other-api.yaml", server)
+        self.change("catalog/manifest.yaml", lambda d: d["spec"]["resources"].append("catalog/servers/other-api.yaml"))
+        self.change("catalog/actions/members.contact.read.yaml", lambda d: d["spec"]["service"].update(name="other-api"))
+        self.invalid("no registered Endpoint for service 'other-api'")
+        endpoint = self.read("catalog/endpoints/members.get.yaml")
+        endpoint["metadata"]["name"] = "other.members.get"
+        endpoint["spec"]["server"] = "other-api"
+        self.write("catalog/endpoints/other.members.get.yaml", endpoint)
+        self.change("catalog/manifest.yaml", lambda d: d["spec"]["resources"].append("catalog/endpoints/other.members.get.yaml"))
+        snapshot = build_snapshot(self.root)
+        self.assertIn({"from": "Action/members.contact.read", "type": "invokes", "to": "Endpoint/other.members.get"}, snapshot["relations"])
+        self.assertIn({"from": "Action/members.detail.read", "type": "invokes", "to": "Endpoint/members.get"}, snapshot["relations"])
+
+    def test_unpaged_action_still_requires_valid_direct_specification(self):
+        self.change("catalog/pages/member-detail.yaml", lambda d: d["spec"].update(actions=[u for u in d["spec"]["actions"] if u["action"] != "members.contact.read"]))
+        self.change("catalog/actions/members.contact.read.yaml", lambda d: d["spec"].update(method="DELETE"))
+        self.invalid("members.contact.read.yaml.*no registered Endpoint.*DELETE")
 
     def test_missing_manifest_file(self):
         (self.root / "catalog/actions/members.contact.read.yaml").unlink()
@@ -225,7 +285,12 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(effective["path"], endpoint["path"])
         self.assertEqual(effective["request"]["parameters"][0]["source"], "input")
         action = next(r for r in snapshot["resources"] if r["kind"] == "Action" and r["metadata"]["name"] == "members.detail.read")
-        self.assertEqual(action["spec"], {"endpoint": "members.get"})
+        self.assertEqual(action["spec"], {
+            "service": {"name": "member-api", "baseUrl": "https://members.example.invalid"},
+            "method": "GET", "path": "/v1/members/{memberId}",
+        })
+        self.assertEqual(effective["service"], action["spec"]["service"])
+        self.assertNotIn("server", effective)
 
     def test_same_action_has_independent_page_overrides(self):
         snapshot = build_snapshot(self.root)

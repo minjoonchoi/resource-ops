@@ -20,6 +20,9 @@
   "$defs": {
     "name": {"type": "string", "maxLength": 128, "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$"},
     "text": {"type": "string", "minLength": 1},
+    "baseUrl": {"type": "string", "pattern": "^https?://[^\\s]+$"},
+    "httpMethod": {"enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]},
+    "endpointPath": {"type": "string", "pattern": "^/(?!/)[^?#\\s]*$"},
     "metadata": {
       "type": "object", "additionalProperties": false,
       "required": ["name", "title"],
@@ -41,7 +44,7 @@
     "server": {
       "type": "object", "additionalProperties": false, "required": ["baseUrl"],
       "properties": {
-        "baseUrl": {"type": "string", "pattern": "^https?://[^\\s]+$"},
+        "baseUrl": {"$ref": "#/$defs/baseUrl"},
         "description": {"$ref": "#/$defs/text"}
       }
     },
@@ -89,8 +92,8 @@
       "required": ["server", "method", "path", "request", "responses"],
       "properties": {
         "server": {"$ref": "#/$defs/name"},
-        "method": {"enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]},
-        "path": {"type": "string", "pattern": "^/(?!/)[^?#\\s]*$"},
+        "method": {"$ref": "#/$defs/httpMethod"},
+        "path": {"$ref": "#/$defs/endpointPath"},
         "request": {
           "type": "object", "additionalProperties": false, "required": ["parameters"],
           "properties": {
@@ -121,9 +124,17 @@
       "oneOf": [{"required": ["source"]}, {"required": ["value"]}]
     },
     "action": {
-      "type": "object", "additionalProperties": false, "required": ["endpoint"],
+      "type": "object", "additionalProperties": false, "required": ["service", "method", "path"],
       "properties": {
-        "endpoint": {"$ref": "#/$defs/name"}
+        "service": {
+          "type": "object", "additionalProperties": false, "required": ["name", "baseUrl"],
+          "properties": {
+            "name": {"$ref": "#/$defs/name"},
+            "baseUrl": {"$ref": "#/$defs/baseUrl"}
+          }
+        },
+        "method": {"$ref": "#/$defs/httpMethod"},
+        "path": {"$ref": "#/$defs/endpointPath"}
       }
     },
     "pageAction": {
