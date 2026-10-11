@@ -1,0 +1,74 @@
+{
+  "openapi": "3.0.4",
+  "info": {
+    "title": "Inventory",
+    "version": "1.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.example.invalid"
+    }
+  ],
+  "components": {
+    "schemas": {
+      "Record": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "Label": {
+        "type": "string",
+        "minLength": 3
+      }
+    }
+  },
+  "paths": {
+    "/records/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "get": {
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "nullable": true,
+              "minimum": 1,
+              "exclusiveMinimum": true
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Record",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Record"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

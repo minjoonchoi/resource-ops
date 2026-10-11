@@ -59,22 +59,27 @@ Python 3.12 이상에서 실행합니다.
 ```sh
 python -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
-# 신규 생성, 기존 서비스 갱신, 삭제된 원본의 생성물 정리, manifest 갱신
-.venv/bin/python scripts/generate_services.py
-# 아무 파일도 수정하지 않고 원본과 생성물 비교
-.venv/bin/python scripts/generate_services.py --check
+# 지정한 JSON 하나만 변환: openapi/member-team/member-api.json
+.venv/bin/python scripts/generate_services.py member-team/member-api
+# 지정 서비스의 생성 결과 비교
+.venv/bin/python scripts/generate_services.py member-team/member-api --check
+# CI / 명시적인 전체 점검
+.venv/bin/python scripts/generate_services.py --all --check
 .venv/bin/python scripts/catalog.py --snapshot dist/catalog.snapshot.json
 .venv/bin/python -m unittest discover -s tests -v
 ```
 
 새 OpenAPI를 추가한 뒤 스크립트로 서비스 YAML을 생성하고, 이를 보고 Action을 작성한 다음
 스크립트를 다시 실행하면 manifest에 Action도 등록됩니다. 원본·생성물·Action을 함께 커밋합니다.
-기존 OpenAPI 변경/삭제/이동도 로컬 스크립트를 실행하여 생성물 변경과 함께 커밋합니다.
+기존 OpenAPI 변경/이동도 같은 대상 명령을 실행하여 생성물 변경과 함께 커밋합니다.
+선택 인자 없는 실행은 오류이며 전체 서비스 갱신·삭제 원본 정리는 명시적인 `--all` 실행으로 수행합니다.
+단일 대상 변환은 다른 JSON 내용을 파싱하거나 다른 서비스 YAML을 수정·삭제하지 않습니다.
+manifest에는 기존 서비스 YAML과 지정한 생성물을 등록하며 다른 미변환 JSON은 미리 등록하지 않습니다.
 `dist/` snapshot은 Git에 저장하지 않습니다.
 
 ## PR 자동화
 
-동일 저장소의 PR에서는 `--create-missing`을 실행합니다.
+동일 저장소의 PR에서는 `--all --create-missing`을 실행합니다.
 
 | 상태 | Workflow 처리 |
 | --- | --- |
@@ -83,7 +88,7 @@ python -m venv .venv
 | 기존 서비스 YAML이 다름 | 덮어쓰지 않고 실패, 로컬 재생성 명령 안내 |
 | 원본 없이 생성 YAML만 남음 | 실패, 원본 삭제 의도와 로컬 재생성 결과 확인 필요 |
 | Action/Page 추가·삭제 | manifest 파일 목록 자동 갱신; Action/Page 내용은 유지 |
-| Fork/Dependabot PR, master push, 수동 실행 | `--check`만 실행; 생성물을 미리 커밋해야 함 |
+| Fork/Dependabot PR, master push, 수동 실행 | `--all --check`만 실행; 생성물을 미리 커밋해야 함 |
 
 서비스 YAML은 주석·포맷까지 결정적인 결과와 비교합니다. JSON의 object key 순서나 공백은
 생성 결과에 영향을 주지 않습니다. 기존 YAML 불일치는 임의 수정인지 미재생성인지 자동 단정하지 않고
@@ -99,8 +104,11 @@ Fork에서 쓰기 권한을 얻기 위한 `pull_request_target`은 사용하지 
 
 ## 지원 범위와 연결
 
-OpenAPI **3.0.x / 3.1.x JSON**, 문서 내부 JSON Pointer `$ref`를 지원합니다.
-외부 `$ref`는 단일 JSON으로 bundle해서 전달합니다. 2.0/3.2, `$id`·anchor·dynamic ref는 현재 범위 밖입니다.
+Swagger **2.0**, OpenAPI **3.0.x / 3.1.x / 3.2.x JSON**을 버전별 검증기와 adapter로 처리합니다.
+버전은 최상위 `swagger`/`openapi`에서 판별하고 원문을 보존합니다. 문서 내부 JSON Pointer `$ref`를 지원하며
+외부 refs는 bundle해야 합니다. `$id`·anchor·dynamic ref는 현재 범위 밖입니다.
+[버전별 공식 문서·호환성·검증 절차](docs/openapi-compatibility.md)와 루트 [AGENTS.md](AGENTS.md)에
+특정 파일 변환 및 호환성 작업 지침을 두었습니다.
 OpenAPI 원본은 보존하지만 Page의 응답 필드 선택은 단일 JSON media type의 명확한 leaf schema만 지원합니다.
 복합 스키마와 여러 media type의 projection은 추측하지 않고 실패합니다.
 

@@ -61,7 +61,7 @@ def resolve_page_action(page_name, usage, action, endpoint, service):
             require(isinstance(resolved, dict) and resolved.get("type") == "string",
                     f"{location}: subject sources require a string parameter")
     raw_responses = {status: copy.deepcopy(dereference(response, document))
-                     for status, response in contract["responses"].items() if not status.startswith("x-")}
+                     for status, response in contract.get("responses", {}).items() if not status.startswith("x-")}
     responses = overrides.get("responses", {})
     require(set(responses) <= set(raw_responses), f"{location}: override references an unknown endpoint response status")
     for status, projection in responses.items():
@@ -85,6 +85,8 @@ def resolve_page_action(page_name, usage, action, endpoint, service):
             parameter["value"] = copy.deepcopy(binding["value"])
         else:
             parameter["source"] = binding["source"]
+    if "swaggerServer" in contract:
+        effective["service"]["swaggerServer"] = copy.deepcopy(contract["swaggerServer"])
     if "requestBody" in contract:
         effective["request"]["body"] = copy.deepcopy(dereference(contract["requestBody"], document))
         effective["request"]["body"]["source"] = "input"

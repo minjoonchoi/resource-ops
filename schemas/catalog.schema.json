@@ -110,16 +110,8 @@
       "minLength": 1
     },
     "httpMethod": {
-      "enum": [
-        "GET",
-        "POST",
-        "PUT",
-        "PATCH",
-        "DELETE",
-        "HEAD",
-        "OPTIONS",
-        "TRACE"
-      ]
+      "type": "string",
+      "pattern": "^[!#$%&'*+.^_`|~0-9A-Za-z-]+$"
     },
     "endpointPath": {
       "type": "string",

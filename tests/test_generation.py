@@ -200,9 +200,9 @@ class GenerationTests(Fixture):
 
     def test_cli_exit_code_and_consumer_snapshot(self):
         scripts = Path(__file__).resolve().parents[1] / 'scripts'
-        result = subprocess.run([sys.executable, str(scripts / 'generate_services.py'), '--root', str(self.root), '--check'], capture_output=True)
+        result = subprocess.run([sys.executable, str(scripts / 'generate_services.py'), '--root', str(self.root), '--all', '--check'], capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.change(SERVICE, lambda d: d['metadata'].update(title='bad'))
-        result = subprocess.run([sys.executable, str(scripts / 'generate_services.py'), '--root', str(self.root), '--check'], capture_output=True)
+        result = subprocess.run([sys.executable, str(scripts / 'generate_services.py'), '--root', str(self.root), '--all', '--check'], capture_output=True)
         self.assertEqual(result.returncode, 1)
         self.assertIn(b'generated files differ', result.stderr)

@@ -37,11 +37,11 @@ jobs:
       - name: Generate missing services or verify committed output
         run: |
           if [ "$CAN_WRITE" = 'true' ]; then
-            python scripts/generate_services.py --create-missing
+            python scripts/generate_services.py --all --create-missing
           else
-            python scripts/generate_services.py --check
+            python scripts/generate_services.py --all --check
           fi
-      - run: python scripts/generate_services.py --check
+      - run: python scripts/generate_services.py --all --check
       - run: python scripts/catalog.py --snapshot dist/catalog.snapshot.json
       - run: python -m unittest discover -s tests -v
       - run: git diff --check

@@ -106,7 +106,7 @@ class CatalogTests(Fixture):
         self.assertEqual(detail["responses"]["200"]["fields"], ["/id", "/nickname", "/organizationCode"])
         listing["responses"]["200"]["fields"].append("/email")
         self.assertNotIn("/email", detail["responses"]["200"]["fields"])
-        endpoint = next(r for r in snapshot["resources"] if r["kind"] == "Endpoint" and r["metadata"]["name"] == endpoint_name("member-api", "get", DETAIL))
+        endpoint = next(r for r in snapshot["resources"] if r["kind"] == "Endpoint" and r["metadata"]["name"] == endpoint_name("member-api", "GET", DETAIL))
         self.assertNotIn("fields", endpoint["spec"]["operation"]["responses"]["200"])
 
     def test_uses_relation_preserves_override_payload(self):
@@ -151,7 +151,7 @@ class CatalogTests(Fixture):
         self.assertEqual(len(snapshot['relations']), 10)
         self.assertEqual(len(snapshot['pageActionUsages']), 4)
         self.assertIn({'from': 'Action/members.contact.read', 'type': 'invokes',
-                       'to': 'Endpoint/' + endpoint_name('member-api', 'get', DETAIL)}, snapshot['relations'])
+                       'to': 'Endpoint/' + endpoint_name('member-api', 'GET', DETAIL)}, snapshot['relations'])
         for r in snapshot['resources']:
             if r['kind'] in ('Service', 'Endpoint'):
                 self.assertEqual(r['metadata']['organization'], 'member-team')

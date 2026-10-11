@@ -31,7 +31,8 @@ Endpoint의 `metadata.organization`은 Service와 같습니다. `metadata.name`�
 `<service>.<소문자 method>.<SHA-256(path UTF-8)의 앞 16자리>`로 생성합니다.
 `operationId`는 원문에 보존하며 필수 식별키로 사용하지 않습니다. 빠져 있거나 camelCase여도
 가져올 수 있고, 제목·operationId가 바뀌어도 동일 서비스·method·path의 Endpoint identity는 유지됩니다.
-해시 충돌로 identity가 중복되면 전체 snapshot 생성을 실패시킵니다.
+3.2 확장 메서드는 `<service>.operation.<SHA-256(method + 공백 + path)의 앞 16자리>`를 사용하며
+메서드 대소문자를 보존합니다. 해시 충돌로 identity가 중복되면 전체 snapshot 생성을 실패시킵니다.
 
 request/response는 OpenAPI의 `parameters`, `requestBody`, `responses`, `content`, `schema`로 보존합니다.
 `$ref`도 그대로 보존하고 **Service.spec.openapi를 참조 루트**로 해석합니다.
@@ -44,6 +45,9 @@ header 이름은 대소문자를 구분하지 않습니다. servers는 operation
 아무것도 없으면 OpenAPI 기본 상대 주소 `/`를 보존합니다. 여러 서버와 server variables도 보존하며
 하나의 base URL을 임의 선택하지 않습니다. security 역시 operation 설정 또는 문서 설정을 사용합니다.
 실제 서버 선택·변수 치환·인증·상대 URL 기준은 소비자의 실행 설정 책임입니다.
+
+Swagger 2.0도 같은 Service 구조에 원문을 보존합니다. body/formData·consumes/produces·서버 정보는
+snapshot에서 adapter로 합성하며 세부 규칙은 [버전 호환성 문서](openapi-compatibility.md)를 따릅니다.
 
 ## Action과 참조
 
@@ -114,7 +118,7 @@ spec:
 필드는 JSON Pointer escaping(`~1`: `/`, `~0`: `~`)을 사용하며 array의 요소만 `*`로 선택합니다.
 `/items/*/id`는 모든 배열 요소의 id입니다. object/array 전체 대신 개별 leaf를 선택합니다.
 정적인 properties/items와 내부 `$ref`를 따라가며 nullable scalar를 지원합니다.
-`allOf`/`oneOf`/`anyOf` 등 복합 스키마, boolean/untyped schema, 제약 sibling을 가진 3.1 `$ref`에 대한
+`allOf`/`oneOf`/`anyOf` 등 복합 스키마, boolean/untyped schema, 제약 sibling을 가진 3.1/3.2 `$ref`에 대한
 projection은 안전하게 결론 낼 수 없어 거부합니다. 원본 보존이나 override 없는 상속은 가능합니다.
 
 실행 서버는 Page·Action 권한과 `(Page, Action)` 사용 맥락을 확인하고 요청 입력/주입값을 검증한 뒤 호출합니다.
@@ -125,9 +129,10 @@ Action만으로 Page별 필드 제한을 결정할 수 없으므로 Page 밖 호
 ## Manifest와 snapshot
 
 `catalog/manifest.yaml`은 생성된 service 파일과 직접 작성한 actions/pages 파일을 정렬한 자동 목록입니다.
-로컬 생성기는 전체 목록을 갱신하며, PR은 서비스 YAML을 새로 만들거나 Action/Page가 추가·삭제될 때 목록을 갱신합니다.
+로컬 `generate_services.py <organization>/<service>`는 선택한 서비스와 현재 파일 목록만 갱신하며, PR은 서비스 YAML을 새로 만들거나 Action/Page가 추가·삭제될 때 목록을 갱신합니다.
 기존 서비스 YAML은 PR에서 재생성 결과와 바이트 단위 비교만 하며 덮어쓰지 않습니다.
-OpenAPI 변경·이동·삭제 시에는 로컬 생성기로 기존 서비스 파일을 갱신/정리한 결과까지 커밋합니다.
+OpenAPI 변경·이동 시 지정 대상 명령으로 갱신한 결과까지 커밋합니다.
+원본 삭제 후 생성물 정리·전체 재생성은 명시적인 `--all` 유지보수 명령으로 수행합니다.
 직접 작성한 Action/Page는 생성기가 수정하거나 삭제하지 않습니다.
 
 | 관계 | 방향 |
@@ -146,10 +151,10 @@ content/schema/headers/links 등 원본 응답 속성을 보존하고 `$ref` 루
 
 ## 검증 경계
 
-OpenAPI 3.0.x/3.1.x 문서를 표준 검증기로 검사합니다. JSON 중복 키·NaN/Infinity·16 MiB 초과 원본을 거부합니다.
+Swagger 2.0과 OpenAPI 3.0.x/3.1.x/3.2.x를 각각의 표준 검증기로 검사합니다. JSON 중복 키·NaN/Infinity·16 MiB 초과 원본을 거부합니다.
 동일 커밋에서 오프라인 재현하기 위해 외부 파일/URL `$ref`는 bundle 후 입력해야 합니다.
 내부 JSON Pointer `$ref`와 재귀 schema는 보존하지만 `$id`, anchors, dynamic refs는 지원하지 않습니다.
-OpenAPI 2.0/3.2, callbacks/webhooks의 별도 Endpoint 등록은 현재 범위 밖입니다.
+callbacks/webhooks의 별도 Endpoint 등록은 현재 범위 밖입니다.
 callbacks/webhooks는 원문에 보존하며 `paths`의 inbound HTTP operation만 Endpoint로 등록합니다.
 
 YAML 중복 키·비문자열 map key·anchors/aliases·다중 문서·32 MiB 초과 파일·symlink·경로 이탈을 거부합니다.
