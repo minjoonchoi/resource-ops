@@ -55,10 +55,10 @@ Page의 Action 사용 정의가 override의 원본입니다. `uses.overrides`와
 거기서 도출한 데이터이며 별도의 편집 원본으로 사용하지 않습니다.
 Service에는 OpenAPI 원문 전체를 저장하고 Endpoint.operation의 `$ref`는 이 문서를 루트로 해석합니다.
 Action 원본의 `spec.endpoint`에 Service.metadata.name 참조·HTTP method/path를 저장하고, 요청/응답 계약 변경은 Page 사용 정의에 저장합니다.
-Action의 `spec.plugins`는 before/after 플러그인 연결과 설정을 저장하며
-`pageActionUsages.plugins`에도 복사합니다. 생략한 단계는 빈 배열입니다.
+Action의 `spec.plugins`는 플러그인 단일 배열과 설정을 저장하며
+`pageActionUsages.plugins`에도 복사합니다. plugins 생략은 빈 배열입니다.
 history는 events 선택 없이 Action 전체 이력을 기록하며 Action.metadata.name(또는 pageActionUsages.action)을 이력의 actionName으로
-사용합니다. after.history도 Action 시작부터 confirm/endpoint 이벤트를 기록하며 실제 이벤트/실행 요청은
+사용합니다. history는 Action 시작부터 confirm/endpoint 이벤트를 기록하며 실제 이벤트/실행 요청은
 카탈로그 리소스에 넣지 않습니다. history.config.request/responses는 실제 값 저장을 위한 선택 규칙이며
 OpenAPI 계약과 대조하고 snapshot에 보존합니다. config 생략은 요청/응답 값 미저장을 뜻합니다.
 실제 수집/필드 추출/이력 저장은 실행 서버 책임입니다.

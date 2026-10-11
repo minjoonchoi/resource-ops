@@ -15,7 +15,9 @@ JSON 파일명에서 `.json`만 제거한 값을 Service의 `metadata.name`으�
 
 ## Service와 Endpoint
 
-하나의 생성 YAML에는 Service 문서 하나가 들어갑니다.
+하나의 생성 YAML에는 Service 문서 하나가 들어갑니다. spec에는 endpoints와 openapi만 저장합니다.
+원본 위치는 metadata.organization/name으로 `openapi/<organization>/<name>.json`을 결정하므로
+spec.source는 저장하지 않습니다.
 
 | 위치 | 생성 규칙 |
 | --- | --- |
@@ -23,7 +25,6 @@ JSON 파일명에서 `.json`만 제거한 값을 Service의 `metadata.name`으�
 | `metadata.name` | JSON 파일명에서 확장자 제거 |
 | `metadata.organization` | 원본의 조직 디렉터리명 |
 | `metadata.title` | OpenAPI `info.title` |
-| `spec.source` | 저장소 기준 OpenAPI 원본 경로 |
 | `spec.openapi` | 파싱한 원본 OpenAPI 전체, 손실 없이 보존 |
 | `spec.endpoints[]` | `paths`의 각 HTTP operation에서 생성한 metadata·method·path |
 
@@ -88,24 +89,22 @@ spec:
     method: GET
     path: /v1/members/{memberId}
   plugins:
-    before:
-      - name: confirm
-        config:
-          pool:
-            users: [reviewer-a, reviewer-b]
-            organizations: [security-team]
-          count: 2
-          execution: requester
-    after:
-      - name: history
-        config:
-          request:
-            parameters:
-              - in: path
-                name: memberId
-          responses:
-            '200':
-              fields: [/id, /email]
+    - name: confirm
+      config:
+        pool:
+          users: [reviewer-a, reviewer-b]
+          organizations: [security-team]
+        count: 2
+        execution: requester
+    - name: history
+      config:
+        request:
+          parameters:
+            - in: path
+              name: memberId
+        responses:
+          '200':
+            fields: [/id, /email]
 ```
 
 Action의 `metadata.organization`은 선택적인 담당조직 표시입니다. 자동 생성 Service/Endpoint는
@@ -127,15 +126,16 @@ Service.metadata.name 참조와 method/path만 담습니다. 기존 spec 최상�
 | 필드 | 역할 |
 | --- | --- |
 | `spec.endpoint` | 실행할 엔드포인트 한 개: service, method, path |
-| `spec.plugins.before` | 엔드포인트 실행 전 플러그인 배열. 현재 `name: confirm` 지원 |
-| `spec.plugins.after` | 후처리 플러그인 배열. history는 Action 전체 이벤트를 지속 수집/저장 |
+| `spec.plugins` | 선택적인 단일 플러그인 배열. confirm/history를 각각 최대 한 번 연결 |
 | confirm의 `config` | 필수 확인 대상·필요 인원·실행 방식 |
 | history 선언 | `name: history`로 Action 전체 이력 기록. 선택적인 config로 요청/응답 저장 필드 지정 |
 
-플러그인을 사용하지 않으면 `plugins`를 생략합니다. before/after 중 필요한 단계만 작성할 수도
-있습니다. 빈 plugins/단계 배열은 거부합니다. 현재 각 플러그인은 정해진 단계에 한 번만 연결하며,
-알 수 없는 이름, 잘못된 단계, 중복 연결을 검증에서 거부합니다. 새 플러그인을 지원하려면
-카탈로그 schema와 실행 서버의 플러그인 등록/검증을 함께 확장해야 합니다.
+플러그인을 사용하지 않으면 `plugins`를 생략합니다. confirm만, history만 또는 둘 다 연결할 수 있습니다.
+before/after 구분 없이 단일 배열로 작성하며 빈 배열·알 수 없는 이름·같은 name의 중복 연결은 거부합니다.
+설정이 달라도 같은 플러그인을 여러 번 연결할 수 없습니다. 기존 before/after 객체는 허용하지 않습니다.
+배열 순서는 보존하지만 실행 단계를 결정하지 않습니다. confirm은 이름에 따라 endpoint 실행을 제어하고,
+history는 선언 위치와 무관하게 Action 시작부터 전체 이력을 수집합니다.
+새 플러그인은 카탈로그 schema와 실행 서버의 등록/검증을 함께 확장해야 합니다.
 플러그인의 name은 실행 서버에 등록된 구현 식별자이며 카탈로그 리소스 참조가 아닙니다.
 Service/Action/Page 간 참조는 계속 대상 metadata.name을 사용합니다.
 
@@ -180,9 +180,9 @@ metadata.name에 대응하는 식별자입니다. 이 저장소에는 사용자/
 
 실행 서버가 따라야 할 단계 계약은 다음과 같습니다.
 
-1. after.history가 연결되었으면 Action 시작 시 이력 수집을 준비합니다.
+1. history가 연결되었으면 Action 시작 시 이력 수집을 준비합니다.
    Action 권한과 입력을 검증하고 Page 사용 맥락의 override를 적용합니다.
-2. before의 confirm이 연결되었으면 count명의 유효 확인이 모일 때까지 대기합니다.
+2. confirm이 연결되었으면 count명의 유효 확인이 모일 때까지 대기합니다.
    requester 방식은 충족 후 요청자의 실행 명령을 기다리고 automatic 방식은 충족 시 자동 실행합니다.
    조건 미충족·요청 취소·오류 상태에서는 endpoint를 호출하지 않습니다. 확인 UI는 플러그인 구현에서 결정합니다.
 3. endpoint 호출을 시도하고 결과를 확정합니다. history는 해당 Action의 모든 이벤트를 발생 시점마다 기록합니다.
@@ -200,8 +200,7 @@ history의 events/actionName/groupBy 등 별도 범위/분류 설정은 거부�
 
 플러그인 구성은 Action에 속하므로 모든 Page 사용에 동일하게 적용됩니다. Page overrides로 플러그인을
 제거·변경할 수 없습니다. Page 밖에서 Action을 실행하는 경우에도 Action.spec.plugins를 적용합니다.
-`resources`의 Action 원본과 `pageActionUsages.plugins`에 구성을 보존하고 생략한 단계는 사용 계약에서
-빈 배열로 정규화합니다. `pageActionUsages.effective`는 기존처럼 엔드포인트의 요청/응답 계약입니다.
+`resources`의 Action 원본과 `pageActionUsages.plugins`에 단일 배열을 그대로 보존하고 plugins 생략은 사용 계약에서 빈 배열로 정규화합니다. `pageActionUsages.effective`는 기존처럼 엔드포인트의 요청/응답 계약입니다.
 
 ### History 요청/응답 값 선택
 
@@ -210,7 +209,7 @@ history.config를 생략하면 행위자·Action·시각·결과 등의 공통 �
 파라미터·본문·응답 상태·필드는 자동 수집하지 않습니다. events 설정은 계속 사용하지 않습니다.
 
 ```yaml
-after:
+plugins:
   - name: history
     config:
       request:
@@ -259,13 +258,13 @@ endpoint 미실행 시 실제 요청/응답 값을 만들지 않습니다. 네�
 
 ### History 수집 및 저장 계약
 
-`after`에 `name: history`만 연결하면 해당 Action의 **모든 이력**을 기록합니다.
+`plugins`에 `name: history`만 연결하면 해당 Action의 **모든 이력**을 기록합니다.
 별도 events나 이벤트 범위 선택은 없으며 Action 요청·확인·endpoint 실행·종료 과정이 모두 포함됩니다.
 선택적인 config는 이력 이벤트에 추가할 실제 요청/응답 값만 지정합니다.
 confirm 플러그인이 없는 Action에서도 history만 연결할 수 있습니다. 실제로 발생하지 않은 confirm
 이벤트는 만들지 않습니다. history를 생략하면 이 플러그인에 의한 이력 저장은 요청하지 않은 것입니다.
 
-history의 after 배치는 후처리 책임을 나타냅니다. endpoint 완료 시 한 번 호출하는 콜백으로 구현하면
+history는 플러그인 배열 위치와 무관하게 Action 전체 실행을 관찰합니다. endpoint 완료 시 한 번 호출하는 콜백으로 구현하면
 대기 중인 확인이나 endpoint 미실행 이력을 잃으므로, 실행 서버는 Action 진입부터 수집기를 활성화하고
 각 이벤트를 내구성 있게 저장해야 합니다. confirm이 며칠 동안 대기해도 기록을 완료 시점까지 미루지 않습니다.
 

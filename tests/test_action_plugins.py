@@ -23,20 +23,18 @@ class ActionPluginTests(Fixture):
     def usages(self, snapshot):
         return [u for u in snapshot['pageActionUsages'] if u['action'] == 'members.detail.read']
 
-    def test_plugins_are_optional_and_missing_phases_normalize_to_empty_arrays(self):
-        for plugins in (None, {'before': [confirm_plugin()]}, {'after': [history_plugin()]}):
+    def test_plugins_are_optional_and_omission_normalizes_to_empty_array(self):
+        for plugins in (None, [confirm_plugin()], [history_plugin()]):
             with self.subTest(plugins=plugins):
                 if plugins is not None:
                     self.set_plugins(plugins)
                 snapshot = build_snapshot(self.root)
                 for usage in self.usages(snapshot):
-                    self.assertEqual(usage['plugins'], {phase: (plugins or {}).get(phase, [])
-                                                       for phase in ('before', 'after')})
+                    self.assertEqual(usage['plugins'], plugins or [])
 
     def test_plugin_configuration_survives_snapshot_without_affecting_endpoint_contract(self):
         before = build_snapshot(self.root)
-        plugins = {'before': [confirm_plugin()],
-                   'after': [history_plugin()]}
+        plugins = [confirm_plugin(), history_plugin()]
         self.set_plugins(plugins)
         snapshot = build_snapshot(self.root)
         action = next(r for r in snapshot['resources'] if r['kind'] == 'Action'
@@ -49,28 +47,39 @@ class ActionPluginTests(Fixture):
             self.assertEqual(usage['plugins'], plugins)
             self.assertEqual(usage['effective'], previous['effective'])
         self.assertEqual(snapshot, build_snapshot(self.root, verify_sources=False))
-        usages[0]['plugins']['after'].clear()
+        usages[0]['plugins'].clear()
         self.assertEqual(usages[1]['plugins'], plugins)
         self.assertEqual(action['spec']['plugins'], plugins)
 
-    def test_wrong_phase_unknown_names_and_malformed_connections_are_rejected(self):
-        invalid = [{}, {'before': []}, {'after': []}, {'during': [{'name': 'confirm'}]},
-                   {'before': [{'name': 'history'}]}, {'after': [{'name': 'confirm'}]},
-                   {'before': [{'name': 'unknown'}]}, {'before': ['confirm']},
-                   {'before': [{}]}, {'before': [{'name': 'confirm', 'enabled': False}]},
-                   {'after': [{'name': 'history', 'config': 'invalid'}]},
-                   {'after': [{'name': 'history'}, {'name': 'history', 'config': {'event': 'other'}}]}]
+    def test_old_phases_unknown_names_and_malformed_connections_are_rejected(self):
+        invalid = [{}, [], {'before': [confirm_plugin()]}, {'after': [history_plugin()]},
+                   [{'name': 'unknown'}], ['confirm'], [{}],
+                   [{**confirm_plugin(), 'enabled': False}],
+                   [{'name': 'history', 'config': 'invalid'}],
+                   [history_plugin(), history_plugin()],
+                   [confirm_plugin(), {**confirm_plugin(), 'config': {
+                       'pool': {'users': ['another-user']}, 'count': 1, 'execution': 'automatic'}}]]
         for plugins in invalid:
             with self.subTest(plugins=plugins):
                 self.set_plugins(plugins)
                 with self.assertRaises(CatalogError):
                     build_snapshot(self.root)
 
+    def test_plugin_order_is_preserved_without_changing_contract(self):
+        before = build_snapshot(self.root)
+        for plugins in ([history_plugin(), confirm_plugin()], [confirm_plugin(), history_plugin()]):
+            with self.subTest(plugins=plugins):
+                self.set_plugins(plugins)
+                snapshot = build_snapshot(self.root)
+                for usage in self.usages(snapshot):
+                    self.assertEqual(usage['plugins'], plugins)
+                self.assertEqual(self.effective(before), self.effective(snapshot))
+
     def test_unpaged_action_plugins_are_validated(self):
         for page in ('members', 'member-detail'):
             self.change(f'pages/{page}.yaml', lambda d: d['spec'].update(
                 actions=[u for u in d['spec']['actions'] if u['action'] != 'members.detail.read']))
-        self.set_plugins({'before': [{'name': 'history'}]})
+        self.set_plugins([{'name': 'unknown'}])
         with self.assertRaises(CatalogError):
             build_snapshot(self.root)
 
@@ -85,7 +94,7 @@ class ActionPluginTests(Fixture):
 
     def test_flat_endpoint_fields_and_inline_contracts_are_rejected(self):
         original = self.read(ACTION)
-        variants = [copy.deepcopy(original['spec']['endpoint']), {'plugins': {'before': [{'name': 'confirm'}]}}]
+        variants = [copy.deepcopy(original['spec']['endpoint']), {'plugins': [{'name': 'confirm'}]}]
         for field in ('request', 'responses'):
             spec = copy.deepcopy(original['spec'])
             spec['endpoint'][field] = {}
@@ -101,10 +110,10 @@ class ActionPluginTests(Fixture):
             with self.subTest(mode=mode):
                 plugin = confirm_plugin()
                 plugin['config'].update(pool={'users': ['a', 'b', 'c']}, count=2, execution=mode)
-                self.set_plugins({'before': [plugin]})
+                self.set_plugins([plugin])
                 snapshot = build_snapshot(self.root)
                 for usage in self.usages(snapshot):
-                    self.assertEqual(usage['plugins']['before'], [plugin])
+                    self.assertEqual(usage['plugins'], [plugin])
                 self.assertEqual(snapshot, build_snapshot(self.root, verify_sources=False))
 
     def test_confirm_rejects_missing_invalid_and_unachievable_conditions(self):
@@ -127,10 +136,10 @@ class ActionPluginTests(Fixture):
         invalid += [{**base, 'required': 1}]
         for config in invalid:
             with self.subTest(config=config):
-                self.set_plugins({'before': [{'name': 'confirm', 'config': config}]})
+                self.set_plugins([{'name': 'confirm', 'config': config}])
                 with self.assertRaises(CatalogError):
                     build_snapshot(self.root)
-        self.set_plugins({'before': [{'name': 'confirm'}]})
+        self.set_plugins([{'name': 'confirm'}])
         with self.assertRaises(CatalogError):
             build_snapshot(self.root)
 
@@ -141,9 +150,9 @@ class ActionPluginTests(Fixture):
             with self.subTest(pool=pool):
                 plugin = confirm_plugin()
                 plugin['config'].update(pool=pool, count=3)
-                self.set_plugins({'before': [plugin]})
+                self.set_plugins([plugin])
                 for usage in self.usages(build_snapshot(self.root)):
-                    self.assertEqual(usage['plugins']['before'], [plugin])
+                    self.assertEqual(usage['plugins'], [plugin])
 
     def test_unpaged_action_cannot_require_more_than_user_candidates(self):
         for page in ('members', 'member-detail'):
@@ -151,14 +160,14 @@ class ActionPluginTests(Fixture):
                 actions=[u for u in d['spec']['actions'] if u['action'] != 'members.detail.read']))
         plugin = confirm_plugin()
         plugin['config']['count'] = 2
-        self.set_plugins({'before': [plugin]})
+        self.set_plugins([plugin])
         self.invalid('count exceeds pool user nicknames')
 
     def test_history_needs_no_configuration_or_confirm_plugin(self):
-        self.set_plugins({'after': [history_plugin()]})
+        self.set_plugins([history_plugin()])
         snapshot = build_snapshot(self.root)
         for usage in self.usages(snapshot):
-            self.assertEqual(usage['plugins'], {'before': [], 'after': [{'name': 'history'}]})
+            self.assertEqual(usage['plugins'], [{'name': 'history'}])
         self.assertEqual(snapshot, build_snapshot(self.root, verify_sources=False))
 
     def test_history_rejects_event_filters_and_overridden_action_identity(self):
@@ -168,12 +177,12 @@ class ActionPluginTests(Fixture):
                    {'groupBy': 'endpoint'}, {'actor': False}]
         for extra in extras:
             with self.subTest(extra=extra):
-                self.set_plugins({'after': [{'name': 'history', **extra}]})
+                self.set_plugins([{'name': 'history', **extra}])
                 with self.assertRaises(CatalogError):
                     build_snapshot(self.root)
 
     def test_history_action_binding_follows_metadata_name_not_endpoint(self):
-        self.set_plugins({'after': [history_plugin()]})
+        self.set_plugins([history_plugin()])
         renamed = 'members.detail.audit'
         action = self.read(ACTION)
         action['metadata']['name'] = renamed
@@ -186,7 +195,7 @@ class ActionPluginTests(Fixture):
         usages = [u for u in snapshot['pageActionUsages'] if u['action'] == renamed]
         self.assertEqual(len(usages), 2)
         for usage in usages:
-            self.assertEqual(usage['plugins']['after'], [history_plugin()])
+            self.assertEqual(usage['plugins'], [history_plugin()])
         contact = next(u for u in snapshot['pageActionUsages'] if u['action'] == 'members.contact.read')
         self.assertEqual(contact['endpoint'], usages[0]['endpoint'])
         self.assertNotEqual(contact['action'], usages[0]['action'])

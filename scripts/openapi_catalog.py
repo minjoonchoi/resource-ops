@@ -177,14 +177,13 @@ def make_service(document, organization, service, source):
     return {
         'apiVersion': VERSION, 'kind': 'Service',
         'metadata': {'name': service, 'organization': organization, 'title': document['info']['title']},
-        'spec': {'source': source, 'endpoints': endpoints, 'openapi': copy.deepcopy(document)},
+        'spec': {'endpoints': endpoints, 'openapi': copy.deepcopy(document)},
     }
 
 
 def validate_service(service):
     spec, meta = service['spec'], service['metadata']
     expected_source = f"openapi/{meta['organization']}/{meta['name']}.json"
-    require(spec['source'] == expected_source, 'Service source must match metadata.organization/name')
     require('/' not in meta['organization'] and meta['organization'] not in ('.', '..'), 'invalid organization directory')
     expected = make_service(spec['openapi'], meta['organization'], meta['name'], expected_source)
     require(service == expected, f"Service/{meta['name']}: generated metadata/endpoints differ from OpenAPI")

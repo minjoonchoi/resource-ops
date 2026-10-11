@@ -306,15 +306,10 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "source",
         "endpoints",
         "openapi"
       ],
       "properties": {
-        "source": {
-          "type": "string",
-          "pattern": "^openapi/[^/]+/[a-z][a-z0-9.-]*\\.json$"
-        },
         "endpoints": {
           "type": "array",
           "minItems": 1,
@@ -381,15 +376,12 @@
       }
     },
     "actionPlugins": {
-      "type": "object",
-      "additionalProperties": false,
-      "minProperties": 1,
-      "properties": {
-        "before": {
-          "type": "array",
-          "minItems": 1,
-          "maxItems": 1,
-          "items": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 2,
+      "items": {
+        "oneOf": [
+          {
             "type": "object",
             "additionalProperties": false,
             "required": [
@@ -404,13 +396,8 @@
                 "$ref": "#/$defs/confirmConfig"
               }
             }
-          }
-        },
-        "after": {
-          "type": "array",
-          "minItems": 1,
-          "maxItems": 1,
-          "items": {
+          },
+          {
             "type": "object",
             "additionalProperties": false,
             "required": [
@@ -425,7 +412,7 @@
               }
             }
           }
-        }
+        ]
       }
     },
     "confirmConfig": {

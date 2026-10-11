@@ -16,7 +16,7 @@ class GenerationTests(Fixture):
         self.assertEqual(service['metadata']['name'], 'member-api')
         self.assertEqual(service['metadata']['organization'], 'member-team')
         self.assertEqual(service['spec']['openapi'], self.read(SOURCE))
-        self.assertEqual(service['spec']['source'], SOURCE)
+        self.assertNotIn('source', service['spec'])
         self.assertEqual(len(service['spec']['endpoints']), 2)
 
     def test_new_service_auto_creation_matches_local_generation(self):

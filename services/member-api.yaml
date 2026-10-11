@@ -137,4 +137,3 @@ spec:
           summary: 회원 단건 조회
     servers:
     - url: https://members.example.invalid
-  source: openapi/member-team/member-api.json

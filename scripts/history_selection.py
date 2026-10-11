@@ -19,7 +19,9 @@ def validate_history_selection(action, endpoint, service):
     document = service['spec']['openapi']
     contract = endpoint['spec']['operation']
     location = f"Action/{action['metadata']['name']}.history"
-    for plugin in action['spec'].get('plugins', {}).get('after', []):
+    for plugin in action['spec'].get('plugins', []):
+        if plugin['name'] != 'history':
+            continue
         config = plugin.get('config', {})
         request = config.get('request', {})
         available = parameters_by_key(contract['parameters'], location)

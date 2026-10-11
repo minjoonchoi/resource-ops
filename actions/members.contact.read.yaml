@@ -11,21 +11,19 @@ spec:
     method: GET
     path: /v1/members/{memberId}
   plugins:
-    before:
-      - name: confirm
-        config:
-          pool:
-            users: [reviewer-a, reviewer-b]
-            organizations: [security-team]
-          count: 2
-          execution: requester
-    after:
-      - name: history
-        config:
-          request:
-            parameters:
-              - in: path
-                name: memberId
-          responses:
-            '200':
-              fields: [/id, /email]
+    - name: confirm
+      config:
+        pool:
+          users: [reviewer-a, reviewer-b]
+          organizations: [security-team]
+        count: 2
+        execution: requester
+    - name: history
+      config:
+        request:
+          parameters:
+            - in: path
+              name: memberId
+        responses:
+          '200':
+            fields: [/id, /email]

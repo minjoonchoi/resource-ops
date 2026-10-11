@@ -9,7 +9,7 @@ ACTION = 'actions/members.detail.read.yaml'
 class HistorySelectionTests(Fixture):
     def select(self, config):
         self.change(ACTION, lambda d: d['spec'].update(
-            plugins={'after': [{'name': 'history', 'config': config}]}))
+            plugins=[{'name': 'history', 'config': config}]))
 
     def test_selection_survives_snapshot_and_does_not_change_page_contract(self):
         before = build_snapshot(self.root)
@@ -21,10 +21,10 @@ class HistorySelectionTests(Fixture):
         self.assertNotIn('/email', self.effective(after)['responses']['200']['fields'])
         usages = [u for u in after['pageActionUsages'] if u['action'] == 'members.detail.read']
         for usage in usages:
-            self.assertEqual(usage['plugins']['after'][0]['config'], config)
+            self.assertEqual(usage['plugins'][0]['config'], config)
         self.assertEqual(after, build_snapshot(self.root, verify_sources=False))
-        usages[0]['plugins']['after'][0]['config']['responses']['200']['fields'].clear()
-        self.assertEqual(usages[1]['plugins']['after'][0]['config'], config)
+        usages[0]['plugins'][0]['config']['responses']['200']['fields'].clear()
+        self.assertEqual(usages[1]['plugins'][0]['config'], config)
 
     def test_invalid_selection_shapes(self):
         for config in ({}, {'request': {}}, {'request': {'parameters': []}},
@@ -128,10 +128,10 @@ class HistorySelectionTests(Fixture):
                     'apiVersion': 'resource-ops/v1', 'kind': 'Action',
                     'metadata': {'name': 'compat.audit', 'title': 'Audit'},
                     'spec': {'endpoint': {'service': 'compat-api', 'method': 'GET', 'path': '/records/{id}'},
-                             'plugins': {'after': [{'name': 'history', 'config': {
+                             'plugins': [{'name': 'history', 'config': {
                                  'request': {'parameters': [{'in': 'path', 'name': 'id'}],
                                              'body': {'fields': ['/reason']}},
-                                 'responses': {'200': {'fields': ['/id']}}}}]}}})
+                                 'responses': {'200': {'fields': ['/id']}}}}]}})
                 generate(self.root, target='team/compat-api')
                 snapshot = build_snapshot(self.root)
                 self.assertEqual(self.read('services/compat-api.yaml')['spec']['openapi'], document)

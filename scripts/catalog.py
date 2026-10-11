@@ -21,7 +21,12 @@ DIRECTORIES = {"Service": "services", "Action": "actions", "Page": "pages"}
 
 def validate_action_plugins(action):
     """Validate statically knowable quorum limits; runtime resolves external memberships."""
-    for plugin in action["spec"].get("plugins", {}).get("before", []):
+    plugins = action["spec"].get("plugins", [])
+    names = [plugin["name"] for plugin in plugins]
+    require(len(names) == len(set(names)), f"Action/{action['metadata']['name']}: duplicate plugin name")
+    for plugin in plugins:
+        if plugin["name"] != "confirm":
+            continue
         config = plugin["config"]
         pool = config["pool"]
         if not pool.get("organizations"):
@@ -101,9 +106,9 @@ def resolve_page_action(page_name, usage, action, endpoint, service):
     if "requestBody" in contract:
         effective["request"]["body"] = copy.deepcopy(dereference(contract["requestBody"], document))
         effective["request"]["body"]["source"] = "input"
-    plugins = action["spec"].get("plugins", {})
+    plugins = action["spec"].get("plugins", [])
     return {"page": page_name, "action": usage["action"], "endpoint": endpoint["metadata"]["name"],
-            "plugins": {phase: copy.deepcopy(plugins.get(phase, [])) for phase in ("before", "after")},
+            "plugins": copy.deepcopy(plugins),
             "effective": effective}
 
 
