@@ -22,10 +22,10 @@ def validate_action_plugins(action):
     """Validate statically knowable quorum limits; runtime resolves external memberships."""
     for plugin in action["spec"].get("plugins", {}).get("before", []):
         config = plugin["config"]
-        targets = config["targets"]
-        if all(target["kind"] == "User" for target in targets):
-            require(config["requiredCount"] <= len(targets),
-                    f"Action/{action['metadata']['name']}: confirm requiredCount exceeds distinct User targets")
+        pool = config["pool"]
+        if not pool.get("organizations"):
+            require(config["count"] <= len(pool["users"]),
+                    f"Action/{action['metadata']['name']}: confirm count exceeds pool user nicknames")
 
 
 def resolve_action_endpoint(action, resources, routes):

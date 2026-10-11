@@ -51,14 +51,10 @@ spec:
     before:
       - name: confirm
         config:
-          targets:
-            - kind: User
-              name: reviewer-a
-            - kind: User
-              name: reviewer-b
-            - kind: User
-              name: reviewer-c
-          requiredCount: 2
+          pool:
+            users: [reviewer-a, reviewer-b]
+            organizations: [security-team]
+          count: 2
           execution: requester
     after:
       - name: history
@@ -71,7 +67,8 @@ Page의 Action 참조 및 상위 Page 참조도 대상의 `metadata.name`을 사
 
 Action은 업무/권한 단위와 실행 전후 플러그인 연결을 정의합니다.
 `spec.endpoint`에 호출 대상을, `spec.plugins.before/after`에 confirm/history를 연결합니다.
-confirm은 `targets` 중 `requiredCount`명의 확인을 요구합니다. `execution: requester`는 조건 충족 후
+confirm은 `pool.users`에 명시한 닉네임과 `pool.organizations`의 소속 사용자를 합친 후보 중
+서로 다른 `count`명의 확인을 요구합니다. `execution: requester`는 조건 충족 후
 요청자가 실행하고, `automatic`은 조건 충족 시 자동 실행합니다.
 플러그인은 선택 사항이며 [실행 계약과 검증 범위](docs/catalog-model.md#action-실행-플러그인)를 따릅니다. 요청·응답 변경은 `Page.spec.actions[].overrides`에
 원본에서 달라지는 부분만 작성합니다. 같은 Action도 Page별 사용 계약은 독립적입니다.

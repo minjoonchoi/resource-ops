@@ -91,14 +91,10 @@ spec:
     before:
       - name: confirm
         config:
-          targets:
-            - kind: User
-              name: reviewer-a
-            - kind: User
-              name: reviewer-b
-            - kind: User
-              name: reviewer-c
-          requiredCount: 2
+          pool:
+            users: [reviewer-a, reviewer-b]
+            organizations: [security-team]
+          count: 2
           execution: requester
     after:
       - name: history
@@ -136,28 +132,35 @@ Service/Action/Page 간 참조는 계속 대상 metadata.name을 사용합니다
 
 ### Confirm 조건
 
-confirm.config에는 다음 세 필드를 모두 작성합니다. 생략된 조건으로 자동 실행되거나 단순 확인으로
-통과하는 기본값은 없습니다. 예제의 reviewer-a/b/c는 가상 사용자 식별자입니다.
+confirm.config에는 pool, count, execution을 모두 작성합니다. 생략된 조건으로 통과하는 기본값은
+없습니다. 예제의 reviewer-a/b는 가상 닉네임이고 security-team은 가상 조직 식별자입니다.
 
 | 필드 | 의미 |
 | --- | --- |
-| `targets` | 확인 가능한 대상 목록. 각 항목은 kind와 name |
-| `requiredCount` | 목록에서 선택된 서로 다른 사용자 중 필요한 확인 인원. 1 이상의 정수 |
-| `execution: requester` | 조건 충족 후 실행 대기. 원래 요청자가 명시적으로 실행해야 호출 |
-| `execution: automatic` | 조건 충족 시 실행 서버가 해당 요청을 즉시 실행 대상으로 전환 |
+| `pool.users` | 확인 후보로 직접 지정하는 사용자 닉네임 목록 |
+| `pool.organizations` | 확인 후보를 가져올 조직 식별자 목록 |
+| `count` | 합쳐진 pool에서 필요한 서로 다른 사용자의 확인 수. 1 이상의 정수 |
+| `execution: requester` | count 충족 후 실행 대기. 원래 요청자가 명시적으로 실행해야 호출 |
+| `execution: automatic` | count 충족 시 실행 서버가 해당 요청을 즉시 실행 대상으로 전환 |
 
-대상 kind는 User, Organization, Role이며 name은 외부 사용자/조직/역할 정의의 metadata.name에
-대응하는 식별키입니다. 이메일·표시명으로 추측하여 매칭하지 않습니다. 이 저장소에 해당 리소스 정의는
-없으므로 존재 여부와 조직/역할 소속은 실행 서버가 확인합니다.
-User는 해당 사용자, Organization은 해당 조직의 직접 소속 사용자, Role은 해당 역할을 직접 부여받은
-사용자를 후보로 해석합니다. 하위 조직이나 간접 역할 상속은 암묵적으로 확장하지 않습니다.
-여러 대상의 후보를 합친 뒤 사용자 식별자로 중복을 제거하며, 동일 사용자의 반복 확인이나
-여러 조직/역할 소속은 한 명으로 계산합니다. requiredCount는 조직/역할 개수가 아니라 확인한 사람 수입니다.
+users와 organizations 중 하나 이상을 지정하며 함께 사용할 수 있습니다. 사용하지 않는 목록은
+생략합니다. kind/name 대상 객체, roles, targets, requiredCount는 허용하지 않습니다.
+users는 사용자 metadata.name이 아닌 **닉네임을 명시하는 목록**입니다. organizations는 외부 조직 정의의
+metadata.name에 대응하는 식별자입니다. 이 저장소에는 사용자/조직 정의가 없으므로 실행 서버가
+닉네임을 실제 사용자 식별자로 해석하고 조직의 직접 소속 사용자를 조회합니다. 하위 조직은 암묵적으로
+확장하지 않습니다. 존재하지 않거나 여러 사람을 가리키는 모호한 닉네임은 오류로 처리합니다.
+입력 문자열은 대소문자 변경이나 공백 제거 없이 보존합니다.
 
-중복 대상, 빈 목록, 공백 이름, 잘못된 kind/실행 방식, 누락 조건, 0·음수·소수 확인 수는 카탈로그 검증에서
-거부합니다. User만 지정한 경우 requiredCount가 대상 수보다 큰 설정도 거부합니다.
-조직/역할을 포함하면 확정 후보 수를 로컬에서 알 수 없으므로 실행 서버가 조회·중복 제거 후
-필요 인원을 충족할 수 있는지 검사합니다. 미존재 대상이나 후보 부족은 확인 요청을 시작하기 전에 오류로 처리합니다.
+명시한 사용자와 조직 소속 사용자를 **하나의 pool로 합쳐 실제 사용자 식별자로 중복 제거**합니다.
+어느 목록/조직에서 왔는지와 무관하게 pool의 서로 다른 count명이 확인하면 조건을 충족합니다.
+조직마다 확인을 받거나 직접 지정한 사용자 모두의 확인을 받을 필요는 없습니다.
+같은 사람의 반복 확인이나 여러 조직 소속은 한 명으로 계산합니다. 개별 거절/미응답은 확인 수에 포함하지
+않으며 다른 후보들로 count가 충족되면 실행 조건은 충족됩니다.
+
+빈 pool·빈 목록·목록 내 중복·공백뿐인 닉네임/조직 식별자·잘못된 실행 방식·누락 조건·0/음수/소수 count는
+카탈로그 검증에서 거부합니다. users만 지정했을 때 count가 닉네임 수보다 큰 설정도 거부합니다.
+조직을 포함하면 실행 서버가 소속 조회와 사용자 중복 제거 후 최종 pool의 인원이 count 이상인지 검사합니다.
+미존재 조직이나 후보 부족은 확인 요청을 시작하기 전에 오류로 처리합니다.
 
 확인은 하나의 실행 요청에 귀속됩니다. 요청자·Action·Page 맥락·확정 입력·카탈로그 revision을
 함께 고정하고, 다른 입력이나 수정된 정책에 기존 확인을 재사용하지 않습니다. 실제 호출 직전에
@@ -169,9 +172,9 @@ User는 해당 사용자, Organization은 해당 조직의 직접 소속 사용�
 실행 서버가 따라야 할 단계 계약은 다음과 같습니다.
 
 1. Action 권한과 입력을 검증하고 Page 사용 맥락의 override를 적용합니다.
-2. before의 confirm이 연결되었으면 requiredCount명의 유효 확인이 모일 때까지 대기합니다.
+2. before의 confirm이 연결되었으면 count명의 유효 확인이 모일 때까지 대기합니다.
    requester 방식은 충족 후 요청자의 실행 명령을 기다리고 automatic 방식은 충족 시 자동 실행합니다.
-   대기·거절·취소·오류 상태에서는 endpoint를 호출하지 않습니다. 확인 UI는 플러그인 구현에서 결정합니다.
+   조건 미충족·요청 취소·오류 상태에서는 endpoint를 호출하지 않습니다. 확인 UI는 플러그인 구현에서 결정합니다.
 3. endpoint 호출을 시도하고 결과를 확정합니다. after의 history가 연결되었으면 성공뿐 아니라
    API 오류·timeout 등 실패 결과도 기록합니다. confirm 단계에서 끝난 경우에는 after를 실행하지 않습니다.
 4. history 저장 실패를 이유로 이미 실행한 endpoint를 다시 호출하지 않습니다.

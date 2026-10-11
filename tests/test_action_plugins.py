@@ -8,8 +8,8 @@ ACTION = 'actions/members.detail.read.yaml'
 
 def confirm_plugin():
     return {'name': 'confirm', 'config': {
-        'targets': [{'kind': 'User', 'name': 'reviewer-a'}],
-        'requiredCount': 1, 'execution': 'requester'}}
+        'pool': {'users': ['reviewer-a']},
+        'count': 1, 'execution': 'requester'}}
 
 
 class ActionPluginTests(Fixture):
@@ -97,9 +97,7 @@ class ActionPluginTests(Fixture):
         for mode in ('requester', 'automatic'):
             with self.subTest(mode=mode):
                 plugin = confirm_plugin()
-                plugin['config'].update(targets=[{'kind': 'User', 'name': name}
-                                                 for name in ('a', 'b', 'c')],
-                                        requiredCount=2, execution=mode)
+                plugin['config'].update(pool={'users': ['a', 'b', 'c']}, count=2, execution=mode)
                 self.set_plugins({'before': [plugin]})
                 snapshot = build_snapshot(self.root)
                 for usage in self.usages(snapshot):
@@ -111,12 +109,17 @@ class ActionPluginTests(Fixture):
         invalid = [None, {}, *[{k: v for k, v in base.items() if k != missing}
                                for missing in base]]
         for count in (0, -1, 1.5, True, '1', 2):
-            invalid.append({**base, 'requiredCount': count})
-        invalid += [{**base, 'targets': targets} for targets in (
-            [], [{'kind': 'User', 'name': 'a'}] * 2,
-            [{'kind': 'Team', 'name': 'a'}], [{'kind': 'User', 'name': ' '}],
-            [{'kind': 'User', 'name': ''}], [{'kind': 'User', 'name': 'a\n'}],
-            [{'kind': 'User', 'name': 'a', 'count': 2}], [{'name': 'a'}])]
+            invalid.append({**base, 'count': count})
+        invalid += [{**base, 'pool': pool} for pool in (
+            {}, [], {'users': []}, {'organizations': []},
+            {'users': ['a', 'a']}, {'organizations': ['org', 'org']},
+            {'users': ['']}, {'users': [' \n']}, {'organizations': [' ']},
+            {'users': [None]}, {'users': 'a'}, {'organizations': 'org'},
+            {'users': [{'kind': 'User', 'name': 'a'}]},
+            {'roles': ['reviewer']}, {'users': ['a'], 'unknown': ['b']})]
+        invalid += [{'targets': [{'kind': 'User', 'name': 'a'}],
+                     'requiredCount': 1, 'execution': 'requester'},
+                    {**base, 'requiredCount': 1}]
         invalid += [{**base, 'execution': mode} for mode in ('manual', '', None)]
         invalid += [{**base, 'required': 1}]
         for config in invalid:
@@ -128,19 +131,22 @@ class ActionPluginTests(Fixture):
         with self.assertRaises(CatalogError):
             build_snapshot(self.root)
 
-    def test_organization_and_role_quorum_is_deferred_to_runtime_membership(self):
-        plugin = confirm_plugin()
-        plugin['config'].update(targets=[{'kind': 'Organization', 'name': 'security-team'},
-                                         {'kind': 'Role', 'name': 'reviewer'}], requiredCount=3)
-        self.set_plugins({'before': [plugin]})
-        for usage in self.usages(build_snapshot(self.root)):
-            self.assertEqual(usage['plugins']['before'], [plugin])
+    def test_organization_only_and_mixed_pools_are_preserved(self):
+        for pool in ({'organizations': ['security-team']},
+                     {'users': ['reviewer-a'], 'organizations': ['security-team', 'member-team']},
+                     {'users': ['홍 길동', 'Reviewer.A', 'reviewer.a']}):
+            with self.subTest(pool=pool):
+                plugin = confirm_plugin()
+                plugin['config'].update(pool=pool, count=3)
+                self.set_plugins({'before': [plugin]})
+                for usage in self.usages(build_snapshot(self.root)):
+                    self.assertEqual(usage['plugins']['before'], [plugin])
 
     def test_unpaged_action_cannot_require_more_than_user_candidates(self):
         for page in ('members', 'member-detail'):
             self.change(f'pages/{page}.yaml', lambda d: d['spec'].update(
                 actions=[u for u in d['spec']['actions'] if u['action'] != 'members.detail.read']))
         plugin = confirm_plugin()
-        plugin['config']['requiredCount'] = 2
+        plugin['config']['count'] = 2
         self.set_plugins({'before': [plugin]})
-        self.invalid('requiredCount exceeds distinct User targets')
+        self.invalid('count exceeds pool user nicknames')
