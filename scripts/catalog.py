@@ -120,12 +120,13 @@ def build_snapshot(root: Path, verify_sources=True):
     Draft202012Validator.check_schema(schema)
     validator = Draft202012Validator(schema)
     manifest = read_yaml(root, "catalog/manifest.yaml")
-    validate_shape(validator, manifest, "catalog/manifest.yaml")
-    require(manifest["kind"] == "Catalog", "catalog/manifest.yaml must have kind Catalog")
+    manifest_schema = json.loads((root / "schemas/manifest.schema.json").read_text(encoding="utf-8"))
+    Draft202012Validator.check_schema(manifest_schema)
+    validate_shape(Draft202012Validator(manifest_schema), manifest, "catalog/manifest.yaml")
     marker = read_yaml(root, "resource-catalog.yaml")
     require(marker == {"resourceOps": {"manifest": "catalog/manifest.yaml", "apiVersion": VERSION}},
             "resource-catalog.yaml: Config Server marker must match the catalog path and version")
-    paths = manifest["spec"]["resources"]
+    paths = manifest["resources"]
     expected = set(paths) | {"catalog/manifest.yaml"}
     discovered = {str(path.relative_to(root)) for directory in (*DIRECTORIES.values(), "catalog") for path in (root / directory).rglob("*")
                   if path.suffix in {".yaml", ".yml"}}
@@ -136,7 +137,7 @@ def build_snapshot(root: Path, verify_sources=True):
         document = read_yaml(root, path)
         validate_shape(validator, document, path)
         kind, name = document["kind"], document["metadata"]["name"]
-        require(kind in DIRECTORIES, f"{path}: Catalog cannot be nested")
+        require(kind in DIRECTORIES, f"{path}: unsupported resource kind {kind}")
         require(not name.endswith("-default"), f"{path}: -default suffix is reserved by Config Server profile resolution")
         require(path == f"{DIRECTORIES[kind]}/{name}.yaml", f"{path}: kind/name must match directory/filename")
         key = kind, name
@@ -211,7 +212,6 @@ def build_snapshot(root: Path, verify_sources=True):
     snapshot = {
         "apiVersion": VERSION,
         "kind": "CatalogSnapshot",
-        "metadata": manifest["metadata"],
         "resources": [resources[key] for key in sorted(resources)],
         "relations": sorted(relations, key=lambda edge: (edge["from"], edge["type"], edge["to"])),
         "pageActionUsages": sorted(page_action_usages, key=lambda usage: (usage["page"], usage["action"])),

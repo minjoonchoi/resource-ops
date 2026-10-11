@@ -81,7 +81,7 @@ class GenerationTests(Fixture):
         self.write('openapi/other-team/other-api.json', self.read(SOURCE))
         changed = generate(self.root, 'create-missing')
         self.assertEqual(set(changed), {'services/other-api.yaml', 'catalog/manifest.yaml'})
-        self.assertIn('services/other-api.yaml', self.read('catalog/manifest.yaml')['spec']['resources'])
+        self.assertIn('services/other-api.yaml', self.read('catalog/manifest.yaml')['resources'])
 
     def test_author_added_action_is_registered_without_modification(self):
         action = self.read('actions/members.detail.read.yaml')

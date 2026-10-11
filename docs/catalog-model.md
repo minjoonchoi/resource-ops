@@ -358,6 +358,22 @@ Action만으로 Page별 필드 제한을 결정할 수 없으므로 Page 밖 호
 ## Manifest와 snapshot
 
 `catalog/manifest.yaml`은 생성된 service 파일과 직접 작성한 actions/pages 파일을 정렬한 자동 목록입니다.
+Catalog kind는 사용하지 않습니다. manifest는 apiVersion/kind/metadata/spec 없이 resources만 가지며,
+`schemas/manifest.schema.json`으로 별도 검증합니다. 리소스 정의 스키마는 Service/Action/Page만 허용합니다.
+
+```yaml
+resources:
+  - actions/members.contact.read.yaml
+  - actions/members.detail.read.yaml
+  - actions/members.directory.list.yaml
+  - pages/member-detail.yaml
+  - pages/members.yaml
+  - services/member-api.yaml
+```
+
+snapshot의 CatalogSnapshot은 동기화 결과 포맷 표식이며 별도의 리소스 정의가 아닙니다.
+snapshot에도 카탈로그 metadata를 넣지 않습니다.
+
 로컬 `generate_services.py <organization>/<service>`는 선택한 서비스와 현재 파일 목록만 갱신하며, PR은 서비스 YAML을 새로 만들거나 Action/Page가 추가·삭제될 때 목록을 갱신합니다.
 기존 서비스 YAML은 PR에서 재생성 결과와 바이트 단위 비교만 하며 덮어쓰지 않습니다.
 OpenAPI 변경·이동 시 지정 대상 명령으로 갱신한 결과까지 커밋합니다.

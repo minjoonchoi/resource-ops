@@ -6,7 +6,7 @@
 ## 원본과 소유권
 
 Git의 유효한 전체 snapshot이 카탈로그 리소스와 연결의 원본입니다.
-동기화 대상 식별자는 `(sourceId, catalogName, kind, name)`입니다.
+동기화 대상 식별자는 `(sourceId, kind, name)`입니다.
 `sourceId`는 동기화 서버에 등록한 저장소/관리 범위의 안정적 ID이며 YAML로 임의 변경하지 않습니다.
 일반 사용자·조직·역할·정책 할당, 서비스 어카운트, API Key, 결재 데이터는 별도 소유 영역입니다.
 카탈로그 동기화가 이 데이터를 덮어쓰거나 연쇄 삭제하지 않습니다.
@@ -17,12 +17,12 @@ DB drift가 생기면 같은 Git revision이라도 다시 비교해 desired stat
 
 ## 입력과 정규화
 
-한 동기화 시도는 `sourceId`, `catalogName`, `sourceRevision`(전체 commit SHA),
+한 동기화 시도는 `sourceId`, `sourceRevision`(전체 commit SHA),
 manifest와 그 안의 모든 리소스 문서를 입력으로 받습니다.
-`catalogName`은 등록된 카탈로그와 manifest.metadata.name이 일치하는지 확인합니다.
+`sourceId`는 동기화 서버에 등록된 저장소/manifest 위치의 식별자입니다. manifest에는 별도 리소스 identity가 없습니다.
 어떤 파일도 다른 commit SHA에서 섞어 읽지 않습니다.
 
-1. manifest, YAML 문법, `apiVersion`, 문서 스키마를 검증합니다.
+1. manifest는 resources 파일 목록 전용 스키마로 검증하고, 리소스 문서는 YAML 문법·apiVersion·종류별 스키마로 검증합니다.
    Service.spec.openapi를 검증하고 spec.endpoints의 metadata·method·path를 다시 대조하여 Endpoint 리소스를 추출합니다.
    Service·Endpoint의 organization은 원본 디렉터리에서 생성한 값이며 identity는 kind/metadata.name입니다.
 2. 파일 목록·identity·참조·Endpoint 계약·Action 직접 명세 대조·Page별 override·Page 계층을 검증합니다.
@@ -38,7 +38,6 @@ manifest에 등록하지 않은 YAML도 잡습니다. 어떤 파일이든 읽기
 | 필드 | 의미 |
 | --- | --- |
 | `apiVersion`, `kind` | `resource-ops/v1`, `CatalogSnapshot` |
-| `metadata` | 카탈로그의 이름·제목·설명 |
 | `resources` | kind/name 순서의 검증된 원본 리소스 |
 | `relations` | from/type/to 순서의 파생 연결, uses 관계는 overrides 속성 보존 |
 | `pageActionUsages` | page/action 순서의 최종 사용 계약: page, action, endpoint, plugins, effective |
@@ -65,7 +64,7 @@ OpenAPI 계약과 대조하고 snapshot에 보존합니다. config 생략은 요
 Action 입력에 Endpoint ID는 없으며 등록 정의와 일치함을 확인한 뒤 DB 연결 identity를 도출합니다.
 `pageActionUsages.endpoint`는 대조 결과의 Endpoint 이름이고, effective에는 참조한 Service와 OpenAPI 상속 규칙에서 가져온 service 정보(`name`, `servers`)도 포함합니다.
 DB 적재 편의를 위한 관계/FK와 작성자가 입력한 직접 명세를 구분해서 보존합니다.
-사용 계약의 key는 `(sourceId, catalogName, page, action)`입니다.
+사용 계약의 key는 `(sourceId, page, action)`입니다.
 Service·Endpoint·Action 직접 명세가 변경되면 일치 여부를 다시 검증하고 연결된 모든 Page의 effective를 다시 계산합니다.
 변경된 Page 파일만 부분 처리하면 상속 데이터가 오래된 상태로 남으므로 전체 snapshot에서 재계산합니다.
 
@@ -73,7 +72,7 @@ Service·Endpoint·Action 직접 명세가 변경되면 일치 여부를 다시 
 
 전체 snapshot 검증과 diff 준비 후 하나의 DB 트랜잭션에서 반영합니다.
 
-1. `(sourceId, catalogName)` 상태 행에 lock을 획득합니다.
+1. `sourceId` 상태 행에 lock을 획득합니다.
 2. 계획 작성 시 관측한 generation/observedRevision이 현재 상태와 같은지 확인합니다.
 3. 새 desiredRevision이 예약되었으면 오래된 작업의 반영을 취소하고 최신 snapshot으로 다시 계획합니다.
 4. Service → Endpoint → Action → Page 순서로 upsert합니다. Page parent FK는 모든 Page upsert 뒤 연결합니다.
@@ -82,7 +81,7 @@ Service·Endpoint·Action 직접 명세가 변경되면 일치 여부를 다시 
 7. 리소스·연결·Page별 사용 계약·observedRevision·성공 이력을 함께 commit합니다.
 
 동일 commit 재실행은 중복 리소스나 관계를 만들지 않아야 합니다. 위 소유권 identity와
-`(sourceId, catalogName, from, type, to)`에 unique constraint를 둡니다.
+`(sourceId, from, type, to)`에 unique constraint를 둡니다.
 identity가 재등장하면 기존 내부 PK를 유지하며 재활성화합니다.
 상세 diff 후 lock을 잡기 전에 상태가 달라지면 기존 계획을 재사용하지 않습니다.
 

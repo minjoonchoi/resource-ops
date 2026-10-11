@@ -12,7 +12,7 @@
 | `services/<service>.yaml` | 자동 생성: Service, Endpoint 목록, OpenAPI 원문 |
 | `actions/<metadata.name>.yaml` | 개발조직: 업무와 서비스 참조·method·path |
 | `pages/<metadata.name>.yaml` | 화면 담당: Action 참조와 필요한 override |
-| `catalog/manifest.yaml` | 자동 생성: Config Server가 읽을 YAML 파일 목록 |
+| `catalog/manifest.yaml` | 자동 생성: resources 목록만 포함하는 일반 manifest |
 | `scripts/generate_services.py` | 로컬·CI 공통 생성기 및 생성물 비교 |
 | `scripts/catalog.py` | 전체 카탈로그 검증과 DB 중립 snapshot 생성 |
 
@@ -30,6 +30,9 @@ Endpoint의 `metadata.name`은 `member-api.GET./v1/members/{memberId}`처럼
 `<서비스명>.<메소드>.<원본 경로>`이며 경로의 `/`, `.`, 대소문자 등을 그대로 보존합니다.
 `metadata.description`에는 operation의 summary를 우선 가져오고, 없거나 공백이면 description을
 사용합니다. 둘 다 없으면 설명 필드는 생략하며 원본 OpenAPI 내용은 그대로 보존합니다.
+
+Catalog kind는 두지 않습니다. `catalog/manifest.yaml`에는 `resources` 파일 목록만 저장하며,
+리소스 정의는 Service·Action·Page와 Service에서 추출하는 Endpoint로 구성합니다.
 
 ## 개발조직의 Action 작성
 
