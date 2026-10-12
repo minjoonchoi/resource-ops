@@ -1,0 +1,21 @@
+api-version: resource-ops/v1
+kind: Page
+metadata:
+  name: member-detail
+  title: 회원 상세
+spec:
+  path: /members/:memberId
+  parent: members
+  actions:
+  - action: members.detail.read
+    response:
+      fields:
+        id: true
+        nickname: true
+        organizationCode: true
+  - action: members.contact.read
+    response:
+      fields:
+        id: true
+        email:
+          mask: email

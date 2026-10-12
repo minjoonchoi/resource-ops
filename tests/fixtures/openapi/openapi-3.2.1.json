@@ -1,0 +1,134 @@
+{
+  "openapi": "3.2.1",
+  "info": {
+    "title": "Inventory",
+    "version": "1.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.example.invalid"
+    }
+  ],
+  "components": {
+    "schemas": {
+      "Record": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "Label": {
+        "type": "string",
+        "minLength": 3
+      },
+      "Anything": true
+    }
+  },
+  "paths": {
+    "/records/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "get": {
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "exclusiveMinimum": 1
+            }
+          },
+          {
+            "name": "label",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/Label",
+              "maxLength": 5
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Record",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Record"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/search": {
+      "query": {
+        "parameters": [
+          {
+            "in": "querystring",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "term": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            },
+            "name": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Search stream",
+            "content": {
+              "application/jsonl": {
+                "itemSchema": {
+                  "$ref": "#/components/schemas/Record"
+                }
+              }
+            }
+          }
+        }
+      },
+      "additionalOperations": {
+        "COPY": {
+          "responses": {
+            "204": {
+              "description": "Copy"
+            }
+          }
+        },
+        "copy": {
+          "responses": {
+            "204": {
+              "description": "Case-sensitive extension"
+            }
+          }
+        }
+      }
+    }
+  }
+}

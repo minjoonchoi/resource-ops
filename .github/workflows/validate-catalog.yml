@@ -1,0 +1,80 @@
+name: Validate catalog
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: catalog-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Fork and Dependabot PR tokens remain read-only; they must include generated files.
+    permissions:
+      contents: write
+      statuses: write
+    env:
+      CAN_WRITE: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: python -m pip install -r requirements.txt
+      - name: Generate missing services or verify committed output
+        run: |
+          if [ "$CAN_WRITE" = 'true' ]; then
+            python scripts/generate_services.py --all --create-missing
+          else
+            python scripts/generate_services.py --all --check
+          fi
+      - run: python scripts/generate_services.py --all --check
+      - run: python scripts/catalog.py --snapshot dist/catalog.snapshot.json
+      - run: python -m unittest discover -s tests -v
+      - run: git diff --check
+      - name: Commit generated files to the same PR branch
+        id: generated
+        if: env.CAN_WRITE == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          git add -- services
+          if ! git diff --cached --quiet; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git commit -m 'chore: generate service catalog from OpenAPI'
+            # A concurrent user push rejects this fast-forward push; never overwrite it.
+            git -c credential.helper='!gh auth git-credential' push origin "HEAD:refs/heads/$PR_HEAD_REF"
+          fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Record validation on the exact committed revision
+        if: always() && env.CAN_WRITE == 'true'
+        uses: actions/github-script@v7
+        env:
+          VALIDATED_SHA: ${{ steps.generated.outputs.sha || github.event.pull_request.head.sha }}
+          VALIDATION_RESULT: ${{ job.status }}
+        with:
+          script: |
+            // Do not depend on a GITHUB_TOKEN push automatically starting another run.
+            await github.rest.repos.createCommitStatus({
+              ...context.repo,
+              sha: process.env.VALIDATED_SHA,
+              state: process.env.VALIDATION_RESULT === 'success' ? 'success' : 'failure',
+              context: 'catalog/validate',
+              description: 'Service generation, catalog validation and regression tests',
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+            });

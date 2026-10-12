@@ -1,0 +1,29 @@
+api-version: resource-ops/v1
+kind: Action
+metadata:
+  name: members.contact.read
+  title: 회원 연락처 보기
+  description: 기본 정보 조회와 같은 Endpoint를 사용하지만 별도 Action 권한으로 제어합니다.
+  organization: member-team
+spec:
+  endpoint:
+    service: member-api
+    method: GET
+    path: /v1/members/{memberId}
+  plugins:
+    - name: confirm
+      config:
+        pool:
+          users: [reviewer-a, reviewer-b]
+          organizations: [security-team]
+        count: 2
+        execution: requester
+    - name: history
+      config:
+        request:
+          parameters:
+            - in: path
+              name: memberId
+        responses:
+          '200':
+            fields: [/id, /email]

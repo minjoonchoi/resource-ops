@@ -1,0 +1,3 @@
+# Spring Environment API에서 현재 Git revision과 규격 버전을 조회하기 위한 설정입니다.
+resource-ops:
+  api-version: resource-ops/v1

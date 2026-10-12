@@ -1,0 +1,131 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "Legacy inventory",
+    "version": "1.0"
+  },
+  "host": "legacy.example.invalid",
+  "basePath": "/api",
+  "schemes": [
+    "https"
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "parameters": {
+    "Limit": {
+      "name": "limit",
+      "in": "query",
+      "type": "integer",
+      "minimum": 1,
+      "exclusiveMinimum": true
+    }
+  },
+  "definitions": {
+    "Record": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    }
+  },
+  "responses": {
+    "Record": {
+      "description": "Record",
+      "schema": {
+        "$ref": "#/definitions/Record"
+      },
+      "headers": {
+        "X-Count": {
+          "type": "integer"
+        }
+      }
+    }
+  },
+  "paths": {
+    "/records/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "type": "integer"
+        }
+      ],
+      "get": {
+        "operationId": "getRecord",
+        "parameters": [
+          {
+            "$ref": "#/parameters/Limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/Record"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putRecord",
+        "parameters": [
+          {
+            "name": "record",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/Record"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Updated"
+          }
+        }
+      }
+    },
+    "/upload": {
+      "post": {
+        "consumes": [
+          "multipart/form-data"
+        ],
+        "schemes": [
+          "http"
+        ],
+        "parameters": [
+          {
+            "name": "file",
+            "in": "formData",
+            "required": true,
+            "type": "file"
+          },
+          {
+            "name": "tags",
+            "in": "formData",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Uploaded"
+          }
+        }
+      }
+    }
+  }
+}

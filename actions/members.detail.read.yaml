@@ -1,0 +1,11 @@
+api-version: resource-ops/v1
+kind: Action
+metadata:
+  name: members.detail.read
+  title: 회원 기본 정보 보기
+  organization: member-team
+spec:
+  endpoint:
+    service: member-api
+    method: GET
+    path: /v1/members/{memberId}

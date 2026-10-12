@@ -1,0 +1,540 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "resource-ops v1 catalog document",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "api-version",
+    "kind",
+    "metadata",
+    "spec"
+  ],
+  "properties": {
+    "kind": {
+      "enum": [
+        "Service",
+        "Action",
+        "Page"
+      ]
+    },
+    "metadata": {
+      "$ref": "#/$defs/metadata"
+    },
+    "spec": {
+      "type": "object"
+    },
+    "api-version": {
+      "const": "resource-ops/v1"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "Action"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "spec": {
+            "$ref": "#/$defs/action"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "Page"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "spec": {
+            "$ref": "#/$defs/page"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "Service"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "spec": {
+            "$ref": "#/$defs/service"
+          },
+          "metadata": {
+            "required": [
+              "organization"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "name": {
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$"
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1
+    },
+    "httpMethod": {
+      "type": "string",
+      "pattern": "^[!#$%&'*+.^_`|~0-9A-Za-z-]+$"
+    },
+    "endpointPath": {
+      "type": "string",
+      "pattern": "^/(?!/)[^?#\\s]*$"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "title"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "title": {
+          "$ref": "#/$defs/text"
+        },
+        "description": {
+          "$ref": "#/$defs/text"
+        },
+        "organization": {
+          "$ref": "#/$defs/text"
+        }
+      }
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "endpoint"
+      ],
+      "properties": {
+        "endpoint": {
+          "$ref": "#/$defs/actionEndpoint"
+        },
+        "plugins": {
+          "$ref": "#/$defs/actionPlugins"
+        }
+      }
+    },
+    "pageAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/name"
+        },
+        "request": {
+          "$ref": "#/$defs/page-request"
+        },
+        "response": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "fields": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {
+                "$ref": "#/$defs/response-tree"
+              }
+            }
+          },
+          "required": [
+            "fields"
+          ]
+        }
+      },
+      "required": [
+        "action"
+      ]
+    },
+    "page": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "actions"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^/(?!/)[^?#\\s]*$"
+        },
+        "parent": {
+          "$ref": "#/$defs/name"
+        },
+        "actions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/pageAction"
+          }
+        }
+      }
+    },
+    "service": {
+      "description": "A standalone, selected OpenAPI/Swagger document. Deep validation uses the version-specific OpenAPI library; x-resource-ops.metadata carries catalog endpoint identity.",
+      "type": "object",
+      "required": [
+        "info",
+        "paths"
+      ],
+      "oneOf": [
+        {
+          "required": [
+            "openapi"
+          ],
+          "properties": {
+            "openapi": {
+              "type": "string",
+              "pattern": "^3\\.[012]\\.[0-9]+$"
+            }
+          }
+        },
+        {
+          "required": [
+            "swagger"
+          ],
+          "properties": {
+            "swagger": {
+              "const": "2.0"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "info": {
+          "type": "object"
+        },
+        "paths": {
+          "type": "object"
+        }
+      }
+    },
+    "actionEndpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "service",
+        "method",
+        "path"
+      ],
+      "properties": {
+        "service": {
+          "$ref": "#/$defs/name"
+        },
+        "method": {
+          "$ref": "#/$defs/httpMethod"
+        },
+        "path": {
+          "$ref": "#/$defs/endpointPath"
+        }
+      }
+    },
+    "actionPlugins": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 2,
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "config"
+            ],
+            "properties": {
+              "name": {
+                "const": "confirm"
+              },
+              "config": {
+                "$ref": "#/$defs/confirmConfig"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "const": "history"
+              },
+              "config": {
+                "$ref": "#/$defs/historyConfig"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "confirmConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pool",
+        "count",
+        "execution"
+      ],
+      "properties": {
+        "pool": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "users": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              }
+            },
+            "organizations": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              }
+            }
+          }
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "execution": {
+          "enum": [
+            "requester",
+            "automatic"
+          ]
+        }
+      }
+    },
+    "historyConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "request": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "parameters": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "in",
+                  "name"
+                ],
+                "properties": {
+                  "in": {
+                    "enum": [
+                      "path",
+                      "query",
+                      "header",
+                      "cookie"
+                    ]
+                  },
+                  "name": {
+                    "$ref": "#/$defs/text"
+                  },
+                  "fields": {
+                    "type": "array",
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "items": {
+                      "type": "string",
+                      "pattern": "^(|/.*)$"
+                    }
+                  }
+                }
+              }
+            },
+            "body": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "fields"
+              ],
+              "properties": {
+                "fields": {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "pattern": "^(|/.*)$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "pattern": "^([1-5][0-9]{2}|[1-5]XX|default)$"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "fields"
+            ],
+            "properties": {
+              "fields": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^(|/.*)$"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "field-binding": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "source": {
+              "const": "subject"
+            },
+            "field": {
+              "enum": [
+                "id",
+                "nickname",
+                "email"
+              ]
+            }
+          },
+          "required": [
+            "source",
+            "field"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "source": {
+              "const": "scope"
+            },
+            "name": {
+              "$ref": "#/$defs/name"
+            }
+          },
+          "required": [
+            "source",
+            "name"
+          ]
+        }
+      ]
+    },
+    "request-tree": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/field-binding"
+        },
+        {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "$ref": "#/$defs/request-tree"
+          }
+        }
+      ]
+    },
+    "response-tree": {
+      "anyOf": [
+        {
+          "anyOf": [
+            {
+              "const": true
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "mask"
+              ],
+              "properties": {
+                "mask": {
+                  "$ref": "#/$defs/name"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "$ref": "#/$defs/response-tree"
+          }
+        }
+      ]
+    },
+    "page-request": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "$ref": "#/$defs/request-tree"
+          }
+        },
+        "body": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "$ref": "#/$defs/request-tree"
+          }
+        }
+      },
+      "minProperties": 1
+    }
+  }
+}

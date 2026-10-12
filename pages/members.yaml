@@ -1,0 +1,25 @@
+api-version: resource-ops/v1
+kind: Page
+metadata:
+  name: members
+  title: 회원 관리
+spec:
+  path: /members
+  actions:
+  - action: members.directory.list
+    request:
+      query:
+        organizationCode:
+          source: scope
+          name: organization-codes
+    response:
+      fields:
+        items:
+          id: true
+          nickname: true
+        total: true
+  - action: members.detail.read
+    response:
+      fields:
+        id: true
+        nickname: true
