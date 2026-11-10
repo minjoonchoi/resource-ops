@@ -1,0 +1,19 @@
+{
+  "name": "resource-ops-catalog-console-html",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24.0.0" },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "check": "node scripts/build.mjs --check"
+  },
+  "dependencies": {
+    "lucide-react": "1.31.0",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "yaml": "2.8.1"
+  },
+  "devDependencies": { "esbuild": "0.28.0" }
+}

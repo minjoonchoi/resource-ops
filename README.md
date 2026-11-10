@@ -4,6 +4,17 @@
 화면별 사용 방식(Page)을 YAML로 정의하는 GitOps 저장소입니다. Spring Cloud Config Server는
 특정 커밋의 YAML을 제공하고, 별도 동기화 서버가 전체 검증 후 DB에 반영합니다.
 
+## 인터랙티브 HTML 운영 콘솔
+
+[`prototype/catalog-console/index.html`](prototype/catalog-console/index.html)을 내려받아 브라우저로 열면
+별도 서버, 설치, CDN 없이 수집·동기화·파일 리비전·롤백 시뮬레이션을 사용할 수 있습니다.
+GitHub의 파일 보기 화면은 HTML을 실행하지 않으므로 파일을 다운로드해 엽니다.
+
+예시 데이터만 사용하며 실제 저장소·DB·Orion을 변경하지 않습니다. Page/Task/Capability 경로와 전역 키,
+Service 이름/조직 키 규칙은 목표 계약으로 표현하고, 기존 Action/Page 계약 및 Orion 호환성의 미확인 항목을 구분합니다.
+전체 트랜잭션과 Git revert를 사용하는 기존 DB 동기화 계약은 그대로 유지됩니다.
+[사용법·설계 차이·재빌드·검증 안내](prototype/catalog-console/README.md)를 참고합니다.
+
 ## 파일과 작성 책임
 
 | 경로 | 작성자 / 내용 |
@@ -193,3 +204,4 @@ snapshot은 리소스 8개·관계 10개·Page 사용 계약 4개를 포함합�
 - [카탈로그 규격·Page 요청/응답 규칙](docs/catalog-model.md)
 - [Config Server에서 같은 SHA의 YAML 조회](docs/config-server.md)
 - [DB 동기화·삭제·실패·롤백 계약](docs/synchronization.md)
+
